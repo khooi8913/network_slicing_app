@@ -25,6 +25,9 @@
         <command>
             <action class="org.xzk.network_slicing.cli.DeviceAddCommand"/>
         </command>
+        <command>
+            <action class="org.xzk.network_slicing.cli.LinkAddCommand"/>
+        </command>
     </command-bundle>
 
 </blueprint>
