@@ -17,7 +17,13 @@
 
     <command-bundle xmlns="http://karaf.apache.org/xmlns/shell/v1.1.0">
         <command>
-            <action class="org.xzk.network_slicing.cli.RegisterTenantCommand"/>
+            <action class="org.xzk.network_slicing.cli.TenantAddCommand"/>
+        </command>
+        <command>
+            <action class="org.xzk.network_slicing.cli.VirtualNetworkCreateCommand"/>
+        </command>
+        <command>
+            <action class="org.xzk.network_slicing.cli.DeviceAddCommand"/>
         </command>
     </command-bundle>
 

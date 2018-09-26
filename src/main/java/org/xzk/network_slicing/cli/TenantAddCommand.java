@@ -24,12 +24,9 @@ import org.onosproject.incubator.net.virtual.VirtualNetworkAdminService;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/**
- * Sample Apache Karaf CLI command
- */
-@Command(scope = "onos", name = "ns-register-tenant",
+@Command(scope = "onos", name = "ns-add-tenant",
         description = "Creates and registers a new tenant")
-public class RegisterTenantCommand extends AbstractShellCommand {
+public class TenantAddCommand extends AbstractShellCommand {
 
     @Argument(index = 0, name = "tenantId", description = "Tenant ID",
             required = true, multiValued = false)
@@ -37,25 +34,19 @@ public class RegisterTenantCommand extends AbstractShellCommand {
 
     @Override
     protected void execute() {
-
-        Pattern validTenantId = Pattern.compile("[A-Za-z0-9]");
+        Pattern validTenantId = Pattern.compile("^[a-zA-Z0-9_]*$");
         Matcher validTenantIdChecker = validTenantId.matcher(tenantId);
 
-        if (validTenantIdChecker.find()) {
+        if (validTenantIdChecker.find()) {  // Valid TenantID
             VirtualNetworkAdminService virtualNetworkAdminService = getService(VirtualNetworkAdminService.class);
             if (!virtualNetworkAdminService.getTenantIds().contains(TenantId.tenantId(tenantId))) {   // New user
-
                 virtualNetworkAdminService.registerTenantId(TenantId.tenantId(tenantId));
-                print("Tenant " + tenantId + "registered successfully!");
-
+                print("Tenant " + tenantId + " registered successfully!");
             } else {    // User already exists
-
-                print("Tenant " + tenantId + "already exists!");
-
+                error("Tenant " + tenantId + " already exists!");
             }
-        } else {
-
-            print ("Invalid Tenant ID input. Tenant ID can only contain alphanumeric characters.");
+        } else {    // Invalid TenantID
+            error ("Invalid Tenant ID input. Tenant ID can only contain alphanumeric characters and underscore only");
         }
     }
 }
