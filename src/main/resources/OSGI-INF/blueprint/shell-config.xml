@@ -28,6 +28,9 @@
         <command>
             <action class="org.xzk.network_slicing.cli.LinkAddCommand"/>
         </command>
+        <command>
+            <action class="org.xzk.network_slicing.cli.EdgePortAddCommand"/>
+        </command>
     </command-bundle>
 
 </blueprint>

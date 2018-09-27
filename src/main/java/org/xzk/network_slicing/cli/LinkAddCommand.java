@@ -45,17 +45,18 @@ public class LinkAddCommand extends AbstractShellCommand {
         VirtualNetworkAdminService virtualNetworkAdminService = getService(VirtualNetworkAdminService.class);
         LinkService linkService = getService(LinkService.class);
 
-        if (isDevicesValid(virtualNetworkAdminService)) {
+        if (isDevicesValid()) {
             ConnectPoint src = new ConnectPoint(DeviceId.deviceId(srcDeviceId), PortNumber.portNumber(srcPortNum));
             ConnectPoint dst = new ConnectPoint(DeviceId.deviceId(dstDeviceId), PortNumber.portNumber(dstPortNum));
 
-            if(isLinksValid(linkService, src, dst)) {
+            if (isLinksValid(linkService, src, dst)) {
                 // Add port
-                
+                registerAndBindPorts(src, dst);
+
                 virtualNetworkAdminService.createVirtualLink(NetworkId.networkId(networkId), src, dst);
                 virtualNetworkAdminService.createVirtualLink(NetworkId.networkId(networkId), dst, src);
                 print("Link added!");
-            } else{
+            } else {
                 print("Link does not exists!");
             }
 
@@ -64,7 +65,9 @@ public class LinkAddCommand extends AbstractShellCommand {
         }
     }
 
-    private boolean isDevicesValid(VirtualNetworkAdminService virtualNetworkAdminService) {
+    private boolean isDevicesValid() {
+
+        VirtualNetworkAdminService virtualNetworkAdminService = getService(VirtualNetworkAdminService.class);
         Set<VirtualDevice> registeredDevices = virtualNetworkAdminService.getVirtualDevices(NetworkId.networkId(networkId));
 
         DefaultVirtualDevice srcDevice = new DefaultVirtualDevice(NetworkId.networkId(networkId), DeviceId.deviceId(srcDeviceId));
@@ -80,8 +83,40 @@ public class LinkAddCommand extends AbstractShellCommand {
         Link to = linkService.getLink(connectPoint1, connectPoint2);
         Link from = linkService.getLink(connectPoint2, connectPoint1);
 
-        if(to != null && from != null) return true;
+        if (to != null && from != null) return true;
 
         return false;
+    }
+
+    private void registerAndBindPorts(ConnectPoint src, ConnectPoint dst) {
+
+        VirtualNetworkAdminService virtualNetworkAdminService = getService(VirtualNetworkAdminService.class);
+
+        // Create & bind port
+        virtualNetworkAdminService.createVirtualPort(
+                NetworkId.networkId(networkId),
+                DeviceId.deviceId(srcDeviceId),
+                PortNumber.portNumber(srcPortNum),
+                src);
+
+        virtualNetworkAdminService.bindVirtualPort(
+                NetworkId.networkId(networkId),
+                DeviceId.deviceId(srcDeviceId),
+                PortNumber.portNumber(srcPortNum),
+                src);
+
+
+        virtualNetworkAdminService.createVirtualPort(
+                NetworkId.networkId(networkId),
+                DeviceId.deviceId(dstDeviceId),
+                PortNumber.portNumber(dstPortNum),
+                dst);
+
+        virtualNetworkAdminService.bindVirtualPort(
+                NetworkId.networkId(networkId),
+                DeviceId.deviceId(dstDeviceId),
+                PortNumber.portNumber(dstPortNum),
+                dst);
+
     }
 }
