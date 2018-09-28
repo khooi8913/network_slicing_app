@@ -24,9 +24,7 @@ import org.onosproject.net.ConnectPoint;
 import org.onosproject.net.HostId;
 import org.onosproject.net.HostLocation;
 import org.onosproject.net.edge.EdgePortService;
-import org.onosproject.net.flow.DefaultTrafficSelector;
-import org.onosproject.net.flow.FlowRuleService;
-import org.onosproject.net.flow.TrafficSelector;
+import org.onosproject.net.flow.*;
 import org.onosproject.net.flowobjective.FlowObjectiveService;
 import org.onosproject.net.host.HostService;
 import org.onosproject.net.packet.*;
@@ -34,6 +32,7 @@ import org.onosproject.net.topology.TopologyService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.ByteBuffer;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.StreamSupport;
@@ -141,19 +140,41 @@ public class AppComponent {
                 return;
             }
 
-            // Get destination host information
-            VirtualHost destinationHost = getDestinationHostInformation(
-                    ethernetPacket.getDestinationMAC(),
-                    tenantIdAndNetworkId.getNetworkId()
-            );
+            switch(EthType.EtherType.lookup(ethernetPacket.getEtherType())) {
+                case ARP:
+                    ARP arpPacket = (ARP) ethernetPacket.getPayload();
+                    MacAddress destinationMacAddress = getDestinationMacAddress(arpPacket, tenantIdAndNetworkId.getNetworkId());
 
-            if(destinationHost == null) {
-                return;
+                    if(destinationMacAddress == null) {
+                        return;
+                    }
+
+                    // Construct ARP Reply
+                    Ip4Address destinationIpAddress = Ip4Address.valueOf(arpPacket.getTargetProtocolAddress());
+                    Ethernet ethernet = ARP.buildArpReply(destinationIpAddress, destinationMacAddress, ethernetPacket);
+
+                    TrafficTreatment.Builder builder = DefaultTrafficTreatment.builder();
+                    builder.setOutput(inboundPacket.receivedFrom().port());
+                    packetService.emit(new DefaultOutboundPacket(
+                            inboundPacket.receivedFrom().deviceId(),
+                            builder.build(),
+                            ByteBuffer.wrap(ethernet.serialize())
+                    ));
+                    break;
+                case IPV4:
+                    // Get destination host information
+                    VirtualHost destinationHost = getDestinationHostInformation(
+                            ethernetPacket.getDestinationMAC(),
+                            tenantIdAndNetworkId.getNetworkId()
+                    );
+
+                    if(destinationHost == null) {
+                        return;
+                    }
+
+                    // Path computation here
+                    break;
             }
-
-            // Path computation here
-
-
         }
 
         private TenantIdNetworkIdPair getTenantIdAndNetworkId(PacketContext packetContext) {
@@ -248,6 +269,21 @@ public class AppComponent {
             for(VirtualHost virtualHost : virtualHosts) {
                 if(virtualHost.mac().equals(destinationMacAddress)) {
                     return virtualHost;
+                }
+            }
+
+            return null;
+        }
+
+        private MacAddress getDestinationMacAddress (ARP arpPacket, NetworkId networkId) {
+
+            byte [] destinationIpAddress = arpPacket.getTargetProtocolAddress();
+
+            Set<VirtualHost> virtualHosts = virtualNetworkAdminService.getVirtualHosts(networkId);
+            for(VirtualHost virtualHost : virtualHosts) {
+                if(virtualHost.ipAddresses().contains(
+                        IpAddress.valueOf(IpAddress.Version.INET, destinationIpAddress))) {
+                    return virtualHost.mac();
                 }
             }
 
