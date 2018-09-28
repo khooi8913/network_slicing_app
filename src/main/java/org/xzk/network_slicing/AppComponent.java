@@ -19,18 +19,22 @@ import org.apache.felix.scr.annotations.*;
 import org.onlab.packet.Ethernet;
 import org.onosproject.core.ApplicationId;
 import org.onosproject.core.CoreService;
+import org.onosproject.incubator.net.virtual.*;
+import org.onosproject.net.HostId;
+import org.onosproject.net.HostLocation;
+import org.onosproject.net.edge.EdgePortService;
 import org.onosproject.net.flow.DefaultTrafficSelector;
 import org.onosproject.net.flow.FlowRuleService;
 import org.onosproject.net.flow.TrafficSelector;
 import org.onosproject.net.flowobjective.FlowObjectiveService;
 import org.onosproject.net.host.HostService;
-import org.onosproject.net.packet.PacketContext;
-import org.onosproject.net.packet.PacketPriority;
-import org.onosproject.net.packet.PacketProcessor;
-import org.onosproject.net.packet.PacketService;
+import org.onosproject.net.packet.*;
 import org.onosproject.net.topology.TopologyService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.Set;
+import java.util.stream.StreamSupport;
 
 @Component(immediate = true)
 public class AppComponent {
@@ -38,6 +42,7 @@ public class AppComponent {
     private final Logger log = LoggerFactory.getLogger(getClass());
 
     private ApplicationId appId;
+    private VirtualNetworkPacketProcessor virtualNetworkPacketProcessor = new VirtualNetworkPacketProcessor();
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected CoreService coreService;
@@ -57,9 +62,17 @@ public class AppComponent {
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected FlowRuleService flowRuleService;
 
+    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
+    protected VirtualNetworkAdminService virtualNetworkAdminService;
+
+    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
+    protected EdgePortService edgePortService;
+
     @Activate
     protected void activate() {
         appId = coreService.registerApplication("org.xzk.network_slicing");
+        requestIntercepts();
+        packetService.addProcessor(virtualNetworkPacketProcessor, PacketProcessor.director(2));
         log.info("Started");
     }
 
@@ -81,6 +94,8 @@ public class AppComponent {
 
     @Deactivate
     protected void deactivate() {
+        withdrawIntercepts();
+        virtualNetworkPacketProcessor = null;
         log.info("Stopped");
     }
 
@@ -88,8 +103,122 @@ public class AppComponent {
 
         @Override
         public void process(PacketContext packetContext) {
-            // TODO
+
+            // Stop processing if the packet has already been handled.
+            // Nothing much more can be done.
+            if (packetContext.isHandled()) {
+                return;
+            }
+
+            InboundPacket inboundPacket = packetContext.inPacket();
+            Ethernet ethernetPacket = inboundPacket.parsed();
+
+            // Only process packets coming from the network edge
+            if (!isEdgePort(packetContext)) {
+                return;
+            }
+
+            // Do not process null packets
+            if (ethernetPacket == null) {
+                return;
+            }
+
+            // Retrieve Port Information
+            TenantIdNetworkIdPair tenantIdAndNetworkId = getTenantIdAndNetworkId(packetContext);
+            if (tenantIdAndNetworkId == null) {
+                return;
+            }
+
+            // Perform Host Registration
+            VirtualHost virtualHost = getVirtualHostInformation(packetContext, tenantIdAndNetworkId.getNetworkId());
+
         }
+
+        private TenantIdNetworkIdPair getTenantIdAndNetworkId(PacketContext packetContext) {
+
+            // TODO: More efficient implementation
+            // Get all tenants
+            Set<TenantId> tenantIds =
+                    virtualNetworkAdminService.getTenantIds();
+            for (TenantId tenantId : tenantIds) {
+                // Get all virtual networks per tenant
+                Set<VirtualNetwork> virtualNetworks =
+                        virtualNetworkAdminService.getVirtualNetworks(tenantId);
+                for (VirtualNetwork virtualNetwork : virtualNetworks) {
+                    // Get all the connect points registered
+                    Set<VirtualDevice> virtualDevices =
+                            virtualNetworkAdminService.getVirtualDevices(virtualNetwork.id());
+                    for (VirtualDevice virtualDevice : virtualDevices) {
+                        Set<VirtualPort> virtualPorts =
+                                virtualNetworkAdminService.getVirtualPorts(virtualNetwork.id(), virtualDevice.id());
+                        for (VirtualPort virtualPort : virtualPorts) {
+                            if (packetContext.inPacket().receivedFrom().equals(virtualPort.realizedBy())) {
+                                // Return something here
+                                return new TenantIdNetworkIdPair(tenantId, virtualNetwork.id());
+                            }
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
+        private boolean isEdgePort(PacketContext packetContext) {
+            return StreamSupport
+                    .stream(edgePortService.getEdgePoints().spliterator(), false)
+                    .anyMatch(packetContext.inPacket().receivedFrom()::equals);
+        }
+
+        private VirtualHost getVirtualHostInformation(PacketContext packetContext, NetworkId networkId) {
+
+            InboundPacket inboundPacket = packetContext.inPacket();
+            Ethernet ethernetPacket = inboundPacket.parsed();
+
+
+//            VirtualHost incomingHost = new DefaultVirtualHost(
+//                    networkId,
+//                    HostId.hostId(ethernetPacket.getSourceMAC()),
+//                    ethernetPacket.getSourceMAC(),
+//                    null,
+//                    new HostLocation(),
+//
+//                    );
+            /**
+             * Creates a virtual host attributed to the specified provider.
+             *
+             * @param networkId network identifier
+             * @param id        host identifier
+             * @param mac       host MAC address
+             * @param vlan      host VLAN identifier
+             * @param location  host location
+             * @param ips       host IP addresses
+             */
+
+            Set<VirtualHost> virtualHosts = virtualNetworkAdminService.getVirtualHosts(networkId);
+
+
+            return null;
+        }
+
+        class TenantIdNetworkIdPair {
+
+            private TenantId tenantId;
+            private NetworkId networkId;
+
+            public TenantIdNetworkIdPair(TenantId tenantId, NetworkId networkId) {
+                this.tenantId = tenantId;
+                this.networkId = networkId;
+            }
+
+            public TenantId getTenantId() {
+                return tenantId;
+            }
+
+            public NetworkId getNetworkId() {
+                return networkId;
+            }
+        }
+
     }
 
 }
