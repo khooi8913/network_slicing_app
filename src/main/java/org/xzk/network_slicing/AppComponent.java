@@ -31,6 +31,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -204,6 +205,8 @@ public class AppComponent {
                         }
 
                         List<Link> pathLinks = path.links();
+                        List<InOutPort> inOutPorts = extractInOutPorts(pathLinks, sourceHost, destinationHost);
+
                         // Build path
 
                     }
@@ -335,21 +338,49 @@ public class AppComponent {
                     // Get all the virtual links available
                     Set<VirtualLink> virtualLinks = virtualNetworkAdminService.getVirtualLinks(networkId);
                     Set<SimpleLink> availableLinks = new HashSet<>();
-                    for(VirtualLink virtualLink : virtualLinks) {
+                    for (VirtualLink virtualLink : virtualLinks) {
                         availableLinks.add(new SimpleLink(virtualLink.src(), virtualLink.dst()));
                     }
 
                     // Get all the path links
                     Set<SimpleLink> pathLinks = new HashSet<>();
                     List<Link> linkList = path.links();
-                    for(Link link : linkList) {
+                    for (Link link : linkList) {
                         pathLinks.add(new SimpleLink(link.src(), link.dst()));
                     }
 
                     // We need to make sure that the the paths is a subset of the virtual links
-                    if(virtualLinks.containsAll(pathLinks)) {
+                    if (virtualLinks.containsAll(pathLinks)) {
                         return path;
                     }
+                }
+            }
+            return null;
+        }
+
+        private List<InOutPort> extractInOutPorts(List<Link> links, VirtualHost sourceHost, VirtualHost destinationHost) {
+            List<InOutPort> inOutPorts = new ArrayList<>();
+            for (int i = 0; i < links.size(); i++) {
+                if (i == 0) {
+                    inOutPorts.add(new InOutPort(
+                        links.get(i).src().deviceId(),
+                        sourceHost.location().port(),
+                        links.get(i).src().port()
+                    ));
+                }  else {
+                    inOutPorts.add(new InOutPort(
+                            links.get(i).src().deviceId(),
+                            links.get(i-1).dst().port(),
+                            links.get(i).src().port()
+                    ));
+                }
+
+                if(i == links.size() -1) {
+                    inOutPorts.add(new InOutPort(
+                            links.get(i).src().deviceId(),
+                            links.get(i).dst().port(),
+                            destinationHost.location().port()
+                    ));
                 }
             }
             return null;
@@ -375,12 +406,25 @@ public class AppComponent {
         }
 
         class SimpleLink {
-            ConnectPoint src;
-            ConnectPoint dst;
+
+            private ConnectPoint src;
+            private ConnectPoint dst;
 
             public SimpleLink(ConnectPoint src, ConnectPoint dst) {
                 this.src = src;
                 this.dst = dst;
+            }
+        }
+
+        class InOutPort {
+            DeviceId deviceId;
+            PortNumber inPort;
+            PortNumber outPort;
+
+            public InOutPort(DeviceId deviceId, PortNumber inPort, PortNumber outPort) {
+                this.deviceId = deviceId;
+                this.inPort = inPort;
+                this.outPort = outPort;
             }
         }
 
