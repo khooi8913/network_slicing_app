@@ -16,7 +16,7 @@
 package org.xzk.network_slicing;
 
 import org.apache.felix.scr.annotations.*;
-import org.onlab.packet.Ethernet;
+import org.onlab.packet.*;
 import org.onosproject.core.ApplicationId;
 import org.onosproject.core.CoreService;
 import org.onosproject.incubator.net.virtual.*;
@@ -33,6 +33,7 @@ import org.onosproject.net.topology.TopologyService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.StreamSupport;
 
@@ -129,8 +130,27 @@ public class AppComponent {
                 return;
             }
 
-            // Perform Host Registration
-            VirtualHost virtualHost = getVirtualHostInformation(packetContext, tenantIdAndNetworkId.getNetworkId());
+            // Register/ get incoming host information
+            VirtualHost sourceHost = getSourceHostInformation(
+                    packetContext,
+                    tenantIdAndNetworkId.getNetworkId()
+            );
+
+            if(sourceHost == null) {
+                return;
+            }
+
+            // Get destination host information
+            VirtualHost destinationHost = getDestinationHostInformation(
+                    ethernetPacket.getDestinationMAC(),
+                    tenantIdAndNetworkId.getNetworkId()
+            );
+
+            if(destinationHost == null) {
+                return;
+            }
+
+            // Path computation here
 
         }
 
@@ -169,33 +189,57 @@ public class AppComponent {
                     .anyMatch(packetContext.inPacket().receivedFrom()::equals);
         }
 
-        private VirtualHost getVirtualHostInformation(PacketContext packetContext, NetworkId networkId) {
+        private VirtualHost getSourceHostInformation(PacketContext packetContext, NetworkId networkId) {
 
             InboundPacket inboundPacket = packetContext.inPacket();
             Ethernet ethernetPacket = inboundPacket.parsed();
+            IPv4 ipPacket = (IPv4) ethernetPacket.getPayload();
 
+            MacAddress macAddress = ethernetPacket.getSourceMAC();
+            HostId hostId = HostId.hostId(ethernetPacket.getSourceMAC());
+            HostLocation hostLocation = new HostLocation(inboundPacket.receivedFrom(), System.currentTimeMillis());
+            Set<IpAddress> ipAddresses = new HashSet<>();
+            ipAddresses.add(IpAddress.valueOf(ipPacket.getSourceAddress()));
 
-//            VirtualHost incomingHost = new DefaultVirtualHost(
-//                    networkId,
-//                    HostId.hostId(ethernetPacket.getSourceMAC()),
-//                    ethernetPacket.getSourceMAC(),
-//                    null,
-//                    new HostLocation(),
-//
-//                    );
-            /**
-             * Creates a virtual host attributed to the specified provider.
-             *
-             * @param networkId network identifier
-             * @param id        host identifier
-             * @param mac       host MAC address
-             * @param vlan      host VLAN identifier
-             * @param location  host location
-             * @param ips       host IP addresses
-             */
+            VirtualHost incomingHost = new DefaultVirtualHost(
+                    networkId,
+                    hostId,
+                    macAddress,
+                    null,
+                    hostLocation,
+                    ipAddresses
+            );
 
             Set<VirtualHost> virtualHosts = virtualNetworkAdminService.getVirtualHosts(networkId);
 
+            // Check if host already exist
+            for (VirtualHost virtualHost : virtualHosts) {
+                if (virtualHost.id().equals(hostId)) {
+                    // TODO: Check HostLocation
+                    return virtualHost;
+                }
+            }
+
+            // If not exist
+            VirtualHost virtualHost = virtualNetworkAdminService.createVirtualHost(
+                    networkId,
+                    hostId,
+                    macAddress,
+                    null,
+                    hostLocation,
+                    ipAddresses);
+
+            return virtualHost;
+        }
+
+        private VirtualHost getDestinationHostInformation(MacAddress destinationMacAddress, NetworkId networkId) {
+
+            Set<VirtualHost> virtualHosts = virtualNetworkAdminService.getVirtualHosts(networkId);
+            for(VirtualHost virtualHost : virtualHosts) {
+                if(virtualHost.mac().equals(destinationMacAddress)) {
+                    return virtualHost;
+                }
+            }
 
             return null;
         }
