@@ -20,7 +20,8 @@ public class MplsLabelPool {
         if(!withdrawedLabels.isEmpty()){
             return withdrawedLabels.poll();
         } else {
-            return currentLabel++;
+            // TODO: MAX_LABEL?
+            return currentLabel;
         }
     }
 

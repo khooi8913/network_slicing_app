@@ -31,10 +31,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.StreamSupport;
 
 @Component(immediate = true)
@@ -101,6 +98,9 @@ public class AppComponent {
     }
 
     private class VirtualNetworkPacketProcessor implements PacketProcessor {
+
+        private HashMap<DeviceId, MplsLabelPool> mplsLabelPool = new HashMap<>();
+        private HashMap<DeviceId, MplsForwardingTable> mplsForwardingTable = new HashMap<>();
 
         @Override
         public void process(PacketContext packetContext) {
@@ -207,7 +207,16 @@ public class AppComponent {
                         List<Link> pathLinks = path.links();
                         List<InOutPort> inOutPorts = extractInOutPorts(pathLinks, sourceHost, destinationHost);
 
+                        // Initialize MplsLabelPool
+                        initializeMplsLabelPool(inOutPorts);
+                        initializeMplsForwardingTables(inOutPorts);
+
                         // Build path
+                        selector = null;
+                        builder = null;
+
+
+
 
                     }
 
@@ -363,19 +372,19 @@ public class AppComponent {
             for (int i = 0; i < links.size(); i++) {
                 if (i == 0) {
                     inOutPorts.add(new InOutPort(
-                        links.get(i).src().deviceId(),
-                        sourceHost.location().port(),
-                        links.get(i).src().port()
+                            links.get(i).src().deviceId(),
+                            sourceHost.location().port(),
+                            links.get(i).src().port()
                     ));
-                }  else {
+                } else {
                     inOutPorts.add(new InOutPort(
                             links.get(i).src().deviceId(),
-                            links.get(i-1).dst().port(),
+                            links.get(i - 1).dst().port(),
                             links.get(i).src().port()
                     ));
                 }
 
-                if(i == links.size() -1) {
+                if (i == links.size() - 1) {
                     inOutPorts.add(new InOutPort(
                             links.get(i).src().deviceId(),
                             links.get(i).dst().port(),
@@ -384,6 +393,22 @@ public class AppComponent {
                 }
             }
             return null;
+        }
+
+        private void initializeMplsLabelPool(List<InOutPort> inOutPorts) {
+            for (InOutPort inOutPort : inOutPorts) {
+                if (!mplsLabelPool.containsKey(inOutPort.getDeviceId())) {
+                    mplsLabelPool.put(inOutPort.getDeviceId(), new MplsLabelPool());
+                }
+            }
+        }
+
+        private void initializeMplsForwardingTables(List<InOutPort> inOutPorts) {
+            for (InOutPort inOutPort : inOutPorts) {
+                if (!mplsForwardingTable.containsKey(inOutPort.getDeviceId())) {
+                    mplsForwardingTable.put(inOutPort.getDeviceId(), new MplsForwardingTable());
+                }
+            }
         }
 
         class TenantIdNetworkIdPair {
@@ -417,14 +442,26 @@ public class AppComponent {
         }
 
         class InOutPort {
-            DeviceId deviceId;
-            PortNumber inPort;
-            PortNumber outPort;
+            private DeviceId deviceId;
+            private PortNumber inPort;
+            private PortNumber outPort;
 
             public InOutPort(DeviceId deviceId, PortNumber inPort, PortNumber outPort) {
                 this.deviceId = deviceId;
                 this.inPort = inPort;
                 this.outPort = outPort;
+            }
+
+            public DeviceId getDeviceId() {
+                return deviceId;
+            }
+
+            public PortNumber getInPort() {
+                return inPort;
+            }
+
+            public PortNumber getOutPort() {
+                return outPort;
             }
         }
 
