@@ -79,16 +79,16 @@ public class AppComponent {
     // Request packet in via packet service
     private void requestIntercepts() {
         TrafficSelector.Builder trafficSelector = DefaultTrafficSelector.builder();
-        trafficSelector.matchEthType(Ethernet.TYPE_IPV4);
         trafficSelector.matchEthType(Ethernet.TYPE_ARP);
+        trafficSelector.matchEthType(Ethernet.TYPE_IPV4);
         packetService.requestPackets(trafficSelector.build(), PacketPriority.REACTIVE, appId);
     }
 
     // To cancel request for packet in via packet service
     private void withdrawIntercepts() {
         TrafficSelector.Builder trafficSelector = DefaultTrafficSelector.builder();
-        trafficSelector.matchEthType(Ethernet.TYPE_IPV4);
         trafficSelector.matchEthType(Ethernet.TYPE_ARP);
+        trafficSelector.matchEthType(Ethernet.TYPE_IPV4);
         packetService.cancelPackets(trafficSelector.build(), PacketPriority.REACTIVE, appId);
     }
 
@@ -147,10 +147,13 @@ public class AppComponent {
 
             switch (EthType.EtherType.lookup(ethernetPacket.getEtherType())) {
                 case ARP:
+                    log.info("ARP packet received");
+
                     ARP arpPacket = (ARP) ethernetPacket.getPayload();
                     MacAddress destinationMacAddress = getDestinationMacAddress(arpPacket, tenantIdAndNetworkId.getNetworkId());
 
                     if (destinationMacAddress == null) {
+                        log.info("Destination host does not exist!");
                         return;
                     }
 
@@ -165,9 +168,13 @@ public class AppComponent {
                             treatment.build(),
                             ByteBuffer.wrap(ethernet.serialize())
                     ));
+                    log.info("ARP reply generated!");
                     break;
 
                 case IPV4:
+
+                    log.info("IPv4 packet received!");
+
                     // Get destination host information
                     VirtualHost destinationHost = getDestinationHostInformation(
                             ethernetPacket.getDestinationMAC(),
@@ -175,6 +182,7 @@ public class AppComponent {
                     );
 
                     if (destinationHost == null) {
+                        log.info("Destination host does not exist!");
                         return;
                     }
 
@@ -194,6 +202,7 @@ public class AppComponent {
                         );
 
                         if (paths.isEmpty()) {
+                            log.info("No known paths available.");
                             return;
                         }
 
@@ -203,18 +212,21 @@ public class AppComponent {
                                 tenantIdAndNetworkId.getNetworkId());
 
                         if (path == null) {
+                            log.info("Unable to find valid path!");
                             return;
                         }
 
                         List<Link> pathLinks = path.links();
                         List<InOutPort> inOutPorts = extractInOutPorts(pathLinks, sourceHost, destinationHost);
 
+                        log.info("Distributing labels!");
+
                         // Initialize MplsLabelPool
                         initializeMplsLabelPool(inOutPorts);
                         initializeMplsForwardingTables(inOutPorts);
 
                         // Distribute labels and build path
-                        MplsLabel currentLabel = null;
+                        MplsLabel currentLabel;
                         MplsLabel previousLabel = null;
 
                         // Extract Destination IP
@@ -279,10 +291,12 @@ public class AppComponent {
                                     .add();
 
                             flowObjectiveService.forward(currentDeviceId, forwardingObjective);
+                            log.info("Flow objective sent to device!");
                         }
 
                         // Forward out current packet
                         packetOut(packetContext, inOutPorts.get(0).outPort);
+                        log.info("Packet out!");
                     }
 
                     break;
@@ -406,27 +420,37 @@ public class AppComponent {
         private Path pickForwardPathIfPossible(Set<Path> paths, PortNumber notToPort, NetworkId networkId) {
 
             for (Path path : paths) {
-                if (!path.src().port().equals(notToPort)) {
-                    // Not going back to itself
+                if (!path.src().port().equals(notToPort)) { // Not going back to itself
 
                     // Get all the virtual links available
+                    ArrayList<SimpleLink> availableLinks = new ArrayList<>();
+
                     Set<VirtualLink> virtualLinks = virtualNetworkAdminService.getVirtualLinks(networkId);
-                    Set<SimpleLink> availableLinks = new HashSet<>();
                     for (VirtualLink virtualLink : virtualLinks) {
                         availableLinks.add(new SimpleLink(virtualLink.src(), virtualLink.dst()));
+                        log.info("Available " + virtualLink.src().toString() + " " + virtualLink.dst().toString());
                     }
 
                     // Get all the path links
-                    Set<SimpleLink> pathLinks = new HashSet<>();
+                    ArrayList<SimpleLink> pathLinks = new ArrayList<>();
+
                     List<Link> linkList = path.links();
                     for (Link link : linkList) {
                         pathLinks.add(new SimpleLink(link.src(), link.dst()));
+                        log.info("Path " + link.src().toString() + " " + link.dst().toString());
                     }
 
-                    // We need to make sure that the the paths is a subset of the virtual links
-                    if (virtualLinks.containsAll(pathLinks)) {
+                    // We need to make sure that the paths is a subset of the virtual links
+//                    if (availableLinks.containsAll(pathLinks)) {
+//                        log.info("Found one valid path!");
+//                        return path;
+//                    }
+
+                    if(containsAll(availableLinks, pathLinks)){
+                        log.info("Found one valid path!");
                         return path;
                     }
+
                 }
             }
             return null;
@@ -457,7 +481,7 @@ public class AppComponent {
                     ));
                 }
             }
-            return null;
+            return inOutPorts;
         }
 
         private void initializeMplsLabelPool(List<InOutPort> inOutPorts) {
@@ -480,6 +504,21 @@ public class AppComponent {
         private void packetOut(PacketContext packetContext, PortNumber portNumber) {
             packetContext.treatmentBuilder().setOutput(portNumber);
             packetContext.send();
+        }
+
+        // Custom containsAll implementation
+        private boolean containsAll(List<?> a, List<?> b) {
+            // List doesn't support remove(), use ArrayList instead
+            ArrayList<Object> x = new ArrayList<Object>();
+            ArrayList<Object> y = new ArrayList<Object>();
+
+            x.addAll(a);
+            y.addAll(b);
+            for (Object o : y) {
+                if (!x.remove(o)) // an element in B is not in A!
+                    return false;
+            }
+            return true;          // all elements in B are also in A
         }
 
         class TenantIdNetworkIdPair {
@@ -509,6 +548,20 @@ public class AppComponent {
             public SimpleLink(ConnectPoint src, ConnectPoint dst) {
                 this.src = src;
                 this.dst = dst;
+            }
+
+            @Override
+            public boolean equals(Object o) {
+                if (this == o) return true;
+                if (o == null || getClass() != o.getClass()) return false;
+                SimpleLink that = (SimpleLink) o;
+                return Objects.equals(src, that.src) &&
+                        Objects.equals(dst, that.dst);
+            }
+
+            @Override
+            public int hashCode() {
+                return Objects.hash(src.toString(), dst.toString());
             }
         }
 
