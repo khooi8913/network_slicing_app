@@ -20,9 +20,7 @@ import org.onlab.packet.*;
 import org.onosproject.core.ApplicationId;
 import org.onosproject.core.CoreService;
 import org.onosproject.incubator.net.virtual.*;
-import org.onosproject.net.ConnectPoint;
-import org.onosproject.net.HostId;
-import org.onosproject.net.HostLocation;
+import org.onosproject.net.*;
 import org.onosproject.net.edge.EdgePortService;
 import org.onosproject.net.flow.*;
 import org.onosproject.net.flowobjective.FlowObjectiveService;
@@ -34,6 +32,7 @@ import org.slf4j.LoggerFactory;
 
 import java.nio.ByteBuffer;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.stream.StreamSupport;
 
@@ -136,16 +135,19 @@ public class AppComponent {
                     tenantIdAndNetworkId.getNetworkId()
             );
 
-            if(sourceHost == null) {
+            if (sourceHost == null) {
                 return;
             }
 
-            switch(EthType.EtherType.lookup(ethernetPacket.getEtherType())) {
+            TrafficSelector.Builder selector;
+            TrafficTreatment.Builder builder;
+
+            switch (EthType.EtherType.lookup(ethernetPacket.getEtherType())) {
                 case ARP:
                     ARP arpPacket = (ARP) ethernetPacket.getPayload();
                     MacAddress destinationMacAddress = getDestinationMacAddress(arpPacket, tenantIdAndNetworkId.getNetworkId());
 
-                    if(destinationMacAddress == null) {
+                    if (destinationMacAddress == null) {
                         return;
                     }
 
@@ -153,7 +155,7 @@ public class AppComponent {
                     Ip4Address destinationIpAddress = Ip4Address.valueOf(arpPacket.getTargetProtocolAddress());
                     Ethernet ethernet = ARP.buildArpReply(destinationIpAddress, destinationMacAddress, ethernetPacket);
 
-                    TrafficTreatment.Builder builder = DefaultTrafficTreatment.builder();
+                    builder = DefaultTrafficTreatment.builder();
                     builder.setOutput(inboundPacket.receivedFrom().port());
                     packetService.emit(new DefaultOutboundPacket(
                             inboundPacket.receivedFrom().deviceId(),
@@ -161,6 +163,7 @@ public class AppComponent {
                             ByteBuffer.wrap(ethernet.serialize())
                     ));
                     break;
+
                 case IPV4:
                     // Get destination host information
                     VirtualHost destinationHost = getDestinationHostInformation(
@@ -168,11 +171,43 @@ public class AppComponent {
                             tenantIdAndNetworkId.getNetworkId()
                     );
 
-                    if(destinationHost == null) {
+                    if (destinationHost == null) {
                         return;
                     }
 
-                    // Path computation here
+
+                    // Both hosts located on the same device
+                    if (sourceHost.location().deviceId().equals(destinationHost.location().deviceId())) {
+
+                        // TODO: Forward to the designated port
+
+                    } else {
+                        // Path computation here
+                        // Get set of paths
+                        Set<Path> paths = topologyService.getPaths(
+                                topologyService.currentTopology(),
+                                sourceHost.location().deviceId(),
+                                destinationHost.location().deviceId()
+                        );
+
+                        if (paths.isEmpty()) {
+                            return;
+                        }
+
+                        Path path = pickForwardPathIfPossible(
+                                paths,
+                                inboundPacket.receivedFrom().port(),
+                                tenantIdAndNetworkId.getNetworkId());
+
+                        if (path == null) {
+                            return;
+                        }
+
+                        List<Link> pathLinks = path.links();
+                        // Build path
+
+                    }
+
                     break;
             }
         }
@@ -225,7 +260,7 @@ public class AppComponent {
             HostLocation hostLocation;
             Set<IpAddress> ipAddresses = new HashSet<>();
 
-            if(ethernetPacket.getEtherType() == Ethernet.TYPE_IPV4){
+            if (ethernetPacket.getEtherType() == Ethernet.TYPE_IPV4) {
                 IPv4 ipPacket = (IPv4) ethernetPacket.getPayload();
 
                 macAddress = ethernetPacket.getSourceMAC();
@@ -266,8 +301,8 @@ public class AppComponent {
         private VirtualHost getDestinationHostInformation(MacAddress destinationMacAddress, NetworkId networkId) {
 
             Set<VirtualHost> virtualHosts = virtualNetworkAdminService.getVirtualHosts(networkId);
-            for(VirtualHost virtualHost : virtualHosts) {
-                if(virtualHost.mac().equals(destinationMacAddress)) {
+            for (VirtualHost virtualHost : virtualHosts) {
+                if (virtualHost.mac().equals(destinationMacAddress)) {
                     return virtualHost;
                 }
             }
@@ -275,18 +310,48 @@ public class AppComponent {
             return null;
         }
 
-        private MacAddress getDestinationMacAddress (ARP arpPacket, NetworkId networkId) {
+        private MacAddress getDestinationMacAddress(ARP arpPacket, NetworkId networkId) {
 
-            byte [] destinationIpAddress = arpPacket.getTargetProtocolAddress();
+            byte[] destinationIpAddress = arpPacket.getTargetProtocolAddress();
 
             Set<VirtualHost> virtualHosts = virtualNetworkAdminService.getVirtualHosts(networkId);
-            for(VirtualHost virtualHost : virtualHosts) {
-                if(virtualHost.ipAddresses().contains(
+            for (VirtualHost virtualHost : virtualHosts) {
+                if (virtualHost.ipAddresses().contains(
                         IpAddress.valueOf(IpAddress.Version.INET, destinationIpAddress))) {
                     return virtualHost.mac();
                 }
             }
 
+            return null;
+        }
+
+        // Pick the possible paths with the links that are registered by the tenant
+        private Path pickForwardPathIfPossible(Set<Path> paths, PortNumber notToPort, NetworkId networkId) {
+
+            for (Path path : paths) {
+                if (!path.src().port().equals(notToPort)) {
+                    // Not going back to itself
+
+                    // Get all the virtual links available
+                    Set<VirtualLink> virtualLinks = virtualNetworkAdminService.getVirtualLinks(networkId);
+                    Set<SimpleLink> availableLinks = new HashSet<>();
+                    for(VirtualLink virtualLink : virtualLinks) {
+                        availableLinks.add(new SimpleLink(virtualLink.src(), virtualLink.dst()));
+                    }
+
+                    // Get all the path links
+                    Set<SimpleLink> pathLinks = new HashSet<>();
+                    List<Link> linkList = path.links();
+                    for(Link link : linkList) {
+                        pathLinks.add(new SimpleLink(link.src(), link.dst()));
+                    }
+
+                    // We need to make sure that the the paths is a subset of the virtual links
+                    if(virtualLinks.containsAll(pathLinks)) {
+                        return path;
+                    }
+                }
+            }
             return null;
         }
 
@@ -306,6 +371,16 @@ public class AppComponent {
 
             public NetworkId getNetworkId() {
                 return networkId;
+            }
+        }
+
+        class SimpleLink {
+            ConnectPoint src;
+            ConnectPoint dst;
+
+            public SimpleLink(ConnectPoint src, ConnectPoint dst) {
+                this.src = src;
+                this.dst = dst;
             }
         }
 

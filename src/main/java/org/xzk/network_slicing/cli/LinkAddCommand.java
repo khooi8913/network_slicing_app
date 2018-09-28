@@ -55,9 +55,9 @@ public class LinkAddCommand extends AbstractShellCommand {
 
                 virtualNetworkAdminService.createVirtualLink(NetworkId.networkId(networkId), src, dst);
                 virtualNetworkAdminService.createVirtualLink(NetworkId.networkId(networkId), dst, src);
-                print("Link added!");
+                print("SimpleLink added!");
             } else {
-                print("Link does not exists!");
+                print("SimpleLink does not exists!");
             }
 
         } else {
