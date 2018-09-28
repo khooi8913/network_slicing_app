@@ -20,6 +20,7 @@ import org.onlab.packet.*;
 import org.onosproject.core.ApplicationId;
 import org.onosproject.core.CoreService;
 import org.onosproject.incubator.net.virtual.*;
+import org.onosproject.net.ConnectPoint;
 import org.onosproject.net.HostId;
 import org.onosproject.net.HostLocation;
 import org.onosproject.net.edge.EdgePortService;
@@ -152,6 +153,7 @@ public class AppComponent {
 
             // Path computation here
 
+
         }
 
         private TenantIdNetworkIdPair getTenantIdAndNetworkId(PacketContext packetContext) {
@@ -184,8 +186,11 @@ public class AppComponent {
         }
 
         private boolean isEdgePort(PacketContext packetContext) {
+
+            Iterable<ConnectPoint> edgePorts = edgePortService.getEdgePoints();
+
             return StreamSupport
-                    .stream(edgePortService.getEdgePoints().spliterator(), false)
+                    .stream(edgePorts.spliterator(), false)
                     .anyMatch(packetContext.inPacket().receivedFrom()::equals);
         }
 
@@ -193,22 +198,27 @@ public class AppComponent {
 
             InboundPacket inboundPacket = packetContext.inPacket();
             Ethernet ethernetPacket = inboundPacket.parsed();
-            IPv4 ipPacket = (IPv4) ethernetPacket.getPayload();
 
-            MacAddress macAddress = ethernetPacket.getSourceMAC();
-            HostId hostId = HostId.hostId(ethernetPacket.getSourceMAC());
-            HostLocation hostLocation = new HostLocation(inboundPacket.receivedFrom(), System.currentTimeMillis());
+            MacAddress macAddress;
+            HostId hostId;
+            HostLocation hostLocation;
             Set<IpAddress> ipAddresses = new HashSet<>();
-            ipAddresses.add(IpAddress.valueOf(ipPacket.getSourceAddress()));
 
-            VirtualHost incomingHost = new DefaultVirtualHost(
-                    networkId,
-                    hostId,
-                    macAddress,
-                    null,
-                    hostLocation,
-                    ipAddresses
-            );
+            if(ethernetPacket.getEtherType() == Ethernet.TYPE_IPV4){
+                IPv4 ipPacket = (IPv4) ethernetPacket.getPayload();
+
+                macAddress = ethernetPacket.getSourceMAC();
+                hostId = HostId.hostId(ethernetPacket.getSourceMAC());
+                hostLocation = new HostLocation(inboundPacket.receivedFrom(), System.currentTimeMillis());
+                ipAddresses.add(IpAddress.valueOf(ipPacket.getSourceAddress()));
+
+            } else {
+                ARP arpPacket = (ARP) ethernetPacket.getPayload();
+                macAddress = ethernetPacket.getSourceMAC();
+                hostId = HostId.hostId(ethernetPacket.getSourceMAC());
+                hostLocation = new HostLocation(inboundPacket.receivedFrom(), System.currentTimeMillis());
+                ipAddresses.add(IpAddress.valueOf(IpAddress.Version.INET, arpPacket.getSenderProtocolAddress()));
+            }
 
             Set<VirtualHost> virtualHosts = virtualNetworkAdminService.getVirtualHosts(networkId);
 
@@ -225,7 +235,7 @@ public class AppComponent {
                     networkId,
                     hostId,
                     macAddress,
-                    null,
+                    VlanId.NONE,
                     hostLocation,
                     ipAddresses);
 
