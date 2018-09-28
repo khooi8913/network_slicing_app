@@ -23,7 +23,9 @@ import org.onosproject.incubator.net.virtual.*;
 import org.onosproject.net.*;
 import org.onosproject.net.edge.EdgePortService;
 import org.onosproject.net.flow.*;
+import org.onosproject.net.flowobjective.DefaultForwardingObjective;
 import org.onosproject.net.flowobjective.FlowObjectiveService;
+import org.onosproject.net.flowobjective.ForwardingObjective;
 import org.onosproject.net.host.HostService;
 import org.onosproject.net.packet.*;
 import org.onosproject.net.topology.TopologyService;
@@ -140,8 +142,8 @@ public class AppComponent {
                 return;
             }
 
-            TrafficSelector.Builder selector;
-            TrafficTreatment.Builder builder;
+            TrafficSelector.Builder selector = null;
+            TrafficTreatment.Builder treatment = null;
 
             switch (EthType.EtherType.lookup(ethernetPacket.getEtherType())) {
                 case ARP:
@@ -156,11 +158,11 @@ public class AppComponent {
                     Ip4Address destinationIpAddress = Ip4Address.valueOf(arpPacket.getTargetProtocolAddress());
                     Ethernet ethernet = ARP.buildArpReply(destinationIpAddress, destinationMacAddress, ethernetPacket);
 
-                    builder = DefaultTrafficTreatment.builder();
-                    builder.setOutput(inboundPacket.receivedFrom().port());
+                    treatment = DefaultTrafficTreatment.builder();
+                    treatment.setOutput(inboundPacket.receivedFrom().port());
                     packetService.emit(new DefaultOutboundPacket(
                             inboundPacket.receivedFrom().deviceId(),
-                            builder.build(),
+                            treatment.build(),
                             ByteBuffer.wrap(ethernet.serialize())
                     ));
                     break;
@@ -211,13 +213,76 @@ public class AppComponent {
                         initializeMplsLabelPool(inOutPorts);
                         initializeMplsForwardingTables(inOutPorts);
 
-                        // Build path
-                        selector = null;
-                        builder = null;
+                        // Distribute labels and build path
+                        MplsLabel currentLabel = null;
+                        MplsLabel previousLabel = null;
 
+                        // Extract Destination IP
+                        IPv4 ipPacket = (IPv4) ethernetPacket.getPayload();
+                        Ip4Prefix ip4DstPrefix = Ip4Prefix.valueOf(ipPacket.getDestinationAddress(), Ip4Prefix.MAX_MASK_LENGTH);
 
+                        for (int i = inOutPorts.size() - 1; i >= 0; i--) {
+                            selector = DefaultTrafficSelector.builder();
+                            treatment = DefaultTrafficTreatment.builder();
+                            PortNumber inPort = inOutPorts.get(i).getInPort();
+                            PortNumber outPort = inOutPorts.get(i).getOutPort();
+                            DeviceId currentDeviceId = inOutPorts.get(i).getDeviceId();
 
+                            if (i == inOutPorts.size() - 1) {
+                                currentLabel = MplsLabel.mplsLabel(mplsLabelPool
+                                        .get(currentDeviceId)
+                                        .getNextLabel()
+                                );
 
+                                selector.matchInPort(inPort);
+                                selector.matchEthType(Ethernet.MPLS_UNICAST);
+                                selector.matchMplsBos(true);
+                                selector.matchMplsLabel(currentLabel);
+
+                                treatment.popMpls(new EthType(Ethernet.TYPE_IPV4));
+                                treatment.setOutput(outPort);
+
+                                previousLabel = currentLabel;
+                            } else if (i == 0) {
+                                selector.matchInPort(inPort);
+                                selector.matchIPDst(ip4DstPrefix);
+                                selector.matchEthType(Ethernet.TYPE_IPV4);
+
+                                treatment.pushMpls();
+                                treatment.setMpls(previousLabel);
+                                treatment.setOutput(outPort);
+                            } else {
+                                currentLabel = MplsLabel.mplsLabel(mplsLabelPool
+                                        .get(currentDeviceId)
+                                        .getNextLabel()
+                                );
+
+                                selector.matchInPort(inPort);
+                                selector.matchMplsLabel(currentLabel);
+                                selector.matchEthType(Ethernet.MPLS_UNICAST);
+
+                                treatment.setMpls(previousLabel);
+                                treatment.setOutput(outPort);
+
+                                previousLabel = currentLabel;
+                            }
+
+                            // TODO: Store Selector & Treatment
+
+                            // Build forwarding objective
+                            ForwardingObjective forwardingObjective = DefaultForwardingObjective.builder()
+                                    .withSelector(selector.build())
+                                    .withTreatment(treatment.build())
+                                    .withPriority(100)
+                                    .fromApp(appId)
+                                    .withFlag(ForwardingObjective.Flag.VERSATILE)
+                                    .add();
+
+                            flowObjectiveService.forward(currentDeviceId, forwardingObjective);
+                        }
+
+                        // Forward out current packet
+                        packetOut(packetContext, inOutPorts.get(0).outPort);
                     }
 
                     break;
@@ -409,6 +474,12 @@ public class AppComponent {
                     mplsForwardingTable.put(inOutPort.getDeviceId(), new MplsForwardingTable());
                 }
             }
+        }
+
+        // Sends a packet out the specified port.
+        private void packetOut(PacketContext packetContext, PortNumber portNumber) {
+            packetContext.treatmentBuilder().setOutput(portNumber);
+            packetContext.send();
         }
 
         class TenantIdNetworkIdPair {
