@@ -96,6 +96,7 @@ public class AppComponent {
     @Deactivate
     protected void deactivate() {
         withdrawIntercepts();
+        flowRuleService.removeFlowRulesById(appId);
         virtualNetworkPacketProcessor = null;
         log.info("Stopped");
     }
