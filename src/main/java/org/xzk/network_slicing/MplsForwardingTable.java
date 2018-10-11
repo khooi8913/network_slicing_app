@@ -23,6 +23,10 @@ public class MplsForwardingTable {
     }
 
     public MplsLabel getMplsLabel (NetworkId networkId, HostId hostId) {
-        return this.mplsForwardingTable.get(networkId).get(hostId);
+        return this.mplsForwardingTable.containsKey(networkId) ?
+               this.mplsForwardingTable.get(networkId).containsKey(hostId)?
+                       this.mplsForwardingTable.get(networkId).get(hostId) :
+                       null :
+                null;
     }
 }

@@ -29,6 +29,7 @@ import org.onosproject.net.flowobjective.ForwardingObjective;
 import org.onosproject.net.host.HostService;
 import org.onosproject.net.packet.*;
 import org.onosproject.net.topology.TopologyService;
+import org.osgi.service.device.Device;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -146,6 +147,7 @@ public class AppComponent {
             TrafficTreatment.Builder treatment = null;
 
             switch (EthType.EtherType.lookup(ethernetPacket.getEtherType())) {
+
                 case ARP:
                     log.info("ARP packet received");
 
@@ -186,37 +188,66 @@ public class AppComponent {
                         return;
                     }
 
+                    // TODO: Check network
+                    // TODO: If different subnet, check routing table
+                    // TODO: Gateway resolution
 
                     // Both hosts located on the same device
                     if (sourceHost.location().deviceId().equals(destinationHost.location().deviceId())) {
 
                         // TODO: Forward to the designated port
+                        selector = DefaultTrafficSelector.builder();
+                        treatment = DefaultTrafficTreatment.builder();
+
+                        IPv4 ipPacket = (IPv4) ethernetPacket.getPayload();
+                        Ip4Prefix ip4DstPrefix = Ip4Prefix.valueOf(ipPacket.getDestinationAddress(), Ip4Prefix.MAX_MASK_LENGTH);
+
+                        PortNumber inPort = sourceHost.location().port();
+                        PortNumber outPort = destinationHost.location().port();
+
+                        selector.matchInPort(inPort);
+                        selector.matchEthType(Ethernet.TYPE_IPV4);
+                        selector.matchIPDst(ip4DstPrefix);
+
+                        treatment.setOutput(outPort);
+
+                        // Build forwarding objective
+                        ForwardingObjective forwardingObjective = DefaultForwardingObjective.builder()
+                                .withSelector(selector.build())
+                                .withTreatment(treatment.build())
+                                .withPriority(100)
+                                .fromApp(appId)
+                                .withFlag(ForwardingObjective.Flag.VERSATILE)
+                                .add();
+
+                        flowObjectiveService.forward(sourceHost.location().deviceId(), forwardingObjective);
+                        log.info("Flow objective sent to device!");
+
+                        // Forward out current packet
+                        packetOut(packetContext, outPort);
+                        log.info("Packet out!");
 
                     } else {
                         // Path computation here
-                        // Get set of paths
-                        Set<Path> paths = topologyService.getPaths(
-                                topologyService.currentTopology(),
-                                sourceHost.location().deviceId(),
-                                destinationHost.location().deviceId()
-                        );
+                        // TODO: BUG HERE !!!!!
+                        log.info("Path Computation");
+                        ArrayList<DeviceId> pathNodes = getForwardPathIfPossible(tenantIdAndNetworkId.getNetworkId(), sourceHost, destinationHost);
+                        Collections.reverse(pathNodes);
+                        for (DeviceId deviceId : pathNodes) log.info(deviceId.toString());
 
-                        if (paths.isEmpty()) {
-                            log.info("No known paths available.");
-                            return;
-                        }
-
-                        Path path = pickForwardPathIfPossible(
-                                paths,
-                                inboundPacket.receivedFrom().port(),
-                                tenantIdAndNetworkId.getNetworkId());
-
-                        if (path == null) {
+                        if (pathNodes == null) {
                             log.info("Unable to find valid path!");
                             return;
                         }
 
-                        List<Link> pathLinks = path.links();
+                        List<Link> pathLinks = getForwardPathLinks(tenantIdAndNetworkId.getNetworkId(), pathNodes);
+                        for (Link link : pathLinks) log.info(link.src().toString() + " " + link.dst().toString());
+
+                        if (pathLinks == null) {
+                            log.info("Unable to find valid path!");
+                            return;
+                        }
+
                         List<InOutPort> inOutPorts = extractInOutPorts(pathLinks, sourceHost, destinationHost);
 
                         log.info("Distributing labels!");
@@ -236,15 +267,30 @@ public class AppComponent {
                         for (int i = inOutPorts.size() - 1; i >= 0; i--) {
                             selector = DefaultTrafficSelector.builder();
                             treatment = DefaultTrafficTreatment.builder();
+
+                            log.info(inOutPorts.get(i).toString());
+
                             PortNumber inPort = inOutPorts.get(i).getInPort();
                             PortNumber outPort = inOutPorts.get(i).getOutPort();
                             DeviceId currentDeviceId = inOutPorts.get(i).getDeviceId();
 
-                            if (i == inOutPorts.size() - 1) {
-                                currentLabel = MplsLabel.mplsLabel(mplsLabelPool
-                                        .get(currentDeviceId)
-                                        .getNextLabel()
-                                );
+                            if (currentDeviceId.equals(destinationHost.location().deviceId())) {   // Terminating Switch
+                                log.info("Flow installing for terminating switch");
+                                if (mplsForwardingTable.get(currentDeviceId).getMplsLabel(
+                                        tenantIdAndNetworkId.getNetworkId(), destinationHost.id()) == null) {
+
+                                    currentLabel = MplsLabel.mplsLabel(mplsLabelPool
+                                            .get(currentDeviceId)
+                                            .getNextLabel()
+                                    );
+                                } else {
+                                    currentLabel = mplsForwardingTable.get(currentDeviceId).getMplsLabel(
+                                            tenantIdAndNetworkId.getNetworkId(), destinationHost.id());
+
+                                    mplsForwardingTable.get(currentDeviceId).addLabelToHost(
+                                            tenantIdAndNetworkId.getNetworkId(), destinationHost.id(), currentLabel
+                                    );
+                                }
 
                                 selector.matchInPort(inPort);
                                 selector.matchEthType(Ethernet.MPLS_UNICAST);
@@ -255,7 +301,12 @@ public class AppComponent {
                                 treatment.setOutput(outPort);
 
                                 previousLabel = currentLabel;
-                            } else if (i == 0) {
+                            } else if (currentDeviceId.equals(sourceHost.location().deviceId())) {    // Originating Switch
+                                log.info("Flow installing for originating switch");
+                                mplsForwardingTable.get(currentDeviceId).addLabelToHost(
+                                        tenantIdAndNetworkId.getNetworkId(), destinationHost.id(), previousLabel
+                                );
+
                                 selector.matchInPort(inPort);
                                 selector.matchIPDst(ip4DstPrefix);
                                 selector.matchEthType(Ethernet.TYPE_IPV4);
@@ -263,11 +314,21 @@ public class AppComponent {
                                 treatment.pushMpls();
                                 treatment.setMpls(previousLabel);
                                 treatment.setOutput(outPort);
-                            } else {
-                                currentLabel = MplsLabel.mplsLabel(mplsLabelPool
-                                        .get(currentDeviceId)
-                                        .getNextLabel()
-                                );
+                            } else {    // LSRs
+                                log.info("Flow installing for LSRs");
+                                if (mplsForwardingTable.get(currentDeviceId).getMplsLabel(
+                                        tenantIdAndNetworkId.getNetworkId(), destinationHost.id()) == null) {
+                                    currentLabel = MplsLabel.mplsLabel(mplsLabelPool
+                                            .get(currentDeviceId)
+                                            .getNextLabel()
+                                    );
+                                } else {
+                                    currentLabel = mplsForwardingTable.get(currentDeviceId).getMplsLabel(
+                                            tenantIdAndNetworkId.getNetworkId(), destinationHost.id());
+                                    mplsForwardingTable.get(currentDeviceId).addLabelToHost(
+                                            tenantIdAndNetworkId.getNetworkId(), destinationHost.id(), currentLabel
+                                    );
+                                }
 
                                 selector.matchInPort(inPort);
                                 selector.matchMplsLabel(currentLabel);
@@ -279,8 +340,6 @@ public class AppComponent {
                                 previousLabel = currentLabel;
                             }
 
-                            // TODO: Store Selector & Treatment
-
                             // Build forwarding objective
                             ForwardingObjective forwardingObjective = DefaultForwardingObjective.builder()
                                     .withSelector(selector.build())
@@ -291,7 +350,7 @@ public class AppComponent {
                                     .add();
 
                             flowObjectiveService.forward(currentDeviceId, forwardingObjective);
-                            log.info("Flow objective sent to device!");
+                            log.info("Flow objective sent to device!" + currentDeviceId.toString());
                         }
 
                         // Forward out current packet
@@ -377,6 +436,7 @@ public class AppComponent {
                 }
             }
 
+            // TODO: Have to make sure that no duplicate hosts exists
             // If not exist
             VirtualHost virtualHost = virtualNetworkAdminService.createVirtualHost(
                     networkId,
@@ -416,49 +476,48 @@ public class AppComponent {
             return null;
         }
 
-        // Pick the possible paths with the links that are registered by the tenant
-        private Path pickForwardPathIfPossible(Set<Path> paths, PortNumber notToPort, NetworkId networkId) {
+        // Custom implementation of path computation
+        private ArrayList<DeviceId> getForwardPathIfPossible(NetworkId networkId, VirtualHost sourceHost, VirtualHost destinationHost) {
 
-            for (Path path : paths) {
-                if (!path.src().port().equals(notToPort)) { // Not going back to itself
+            // Get all the virtual links available
+            Set<VirtualLink> virtualLinks = virtualNetworkAdminService.getVirtualLinks(networkId);
 
-                    // Get all the virtual links available
-                    ArrayList<SimpleLink> availableLinks = new ArrayList<>();
+            // Get all the virtual devices available
+            Set<VirtualDevice> virtualDevices = virtualNetworkAdminService.getVirtualDevices(networkId);
 
-                    Set<VirtualLink> virtualLinks = virtualNetworkAdminService.getVirtualLinks(networkId);
-                    for (VirtualLink virtualLink : virtualLinks) {
-                        availableLinks.add(new SimpleLink(virtualLink.src(), virtualLink.dst()));
-                        log.info("Available " + virtualLink.src().toString() + " " + virtualLink.dst().toString());
+            // Construct Graph
+            int numberOfVertices = virtualDevices.size();
+            VirtualNetworkGraph virtualNetworkGraph = new VirtualNetworkGraph(numberOfVertices);
+            for (VirtualLink virtualLink : virtualLinks) {
+                virtualNetworkGraph.addEdge(virtualLink.src().deviceId(), virtualLink.dst().deviceId());
+            }
+
+            return virtualNetworkGraph.bfsForShortestPath(sourceHost.location().deviceId(),
+                    destinationHost.location().deviceId());
+        }
+
+        // Get Links in the path
+        private List<Link> getForwardPathLinks(NetworkId networkId, ArrayList<DeviceId> deviceIds) {
+            List<Link> links = new LinkedList<>();
+
+            // Get all the virtual links available
+            Set<VirtualLink> virtualLinks = virtualNetworkAdminService.getVirtualLinks(networkId);
+
+            for (int i = 0; i < deviceIds.size() - 1; i++) {
+                for (VirtualLink virtualLink : virtualLinks) {
+                    if (virtualLink.src().deviceId().equals(deviceIds.get(i)) &&
+                            virtualLink.dst().deviceId().equals(deviceIds.get(i + 1))) {
+                        links.add(virtualLink);
                     }
-
-                    // Get all the path links
-                    ArrayList<SimpleLink> pathLinks = new ArrayList<>();
-
-                    List<Link> linkList = path.links();
-                    for (Link link : linkList) {
-                        pathLinks.add(new SimpleLink(link.src(), link.dst()));
-                        log.info("Path " + link.src().toString() + " " + link.dst().toString());
-                    }
-
-                    // We need to make sure that the paths is a subset of the virtual links
-//                    if (availableLinks.containsAll(pathLinks)) {
-//                        log.info("Found one valid path!");
-//                        return path;
-//                    }
-
-                    if(containsAll(availableLinks, pathLinks)){
-                        log.info("Found one valid path!");
-                        return path;
-                    }
-
                 }
             }
-            return null;
+            return links;
         }
 
         private List<InOutPort> extractInOutPorts(List<Link> links, VirtualHost sourceHost, VirtualHost destinationHost) {
             List<InOutPort> inOutPorts = new ArrayList<>();
             for (int i = 0; i < links.size(); i++) {
+
                 if (i == 0) {
                     inOutPorts.add(new InOutPort(
                             links.get(i).src().deviceId(),
@@ -475,11 +534,12 @@ public class AppComponent {
 
                 if (i == links.size() - 1) {
                     inOutPorts.add(new InOutPort(
-                            links.get(i).src().deviceId(),
+                            links.get(i).dst().deviceId(),
                             links.get(i).dst().port(),
                             destinationHost.location().port()
                     ));
                 }
+
             }
             return inOutPorts;
         }
@@ -586,6 +646,15 @@ public class AppComponent {
 
             public PortNumber getOutPort() {
                 return outPort;
+            }
+
+            @Override
+            public String toString() {
+                return "InOutPort{" +
+                        "deviceId=" + deviceId.toString() +
+                        ", inPort=" + inPort.toString() +
+                        ", outPort=" + outPort.toString() +
+                        '}';
             }
         }
 
