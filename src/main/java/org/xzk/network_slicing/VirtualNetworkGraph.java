@@ -53,20 +53,26 @@ public class VirtualNetworkGraph {
             }
         }
 
-        DeviceId node, currentSrc = destinationDeviceId;
+        // TODO: Something wrong there.......
+        // What is the problem with this implementation?
+
+        DeviceId node;
+        DeviceId currentSrc = destinationDeviceId;
         shortestPathList.add(destinationDeviceId);
         while(!pathStack.isEmpty()) {
             node = pathStack.pop();
             if(this.adj.get(currentSrc).contains(node) &&
                     this.adj.get(node).contains(currentSrc)) {
+
                 shortestPathList.add(node);
                 currentSrc = node;
-                if(node == sourceDeviceId) {
+
+                if(node.equals(sourceDeviceId)) {
                     break;
                 }
+
             }
         }
-
         return shortestPathList;
     }
 }

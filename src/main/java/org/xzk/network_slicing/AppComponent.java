@@ -493,6 +493,7 @@ public class AppComponent {
                 virtualNetworkGraph.addEdge(virtualLink.src().deviceId(), virtualLink.dst().deviceId());
             }
 
+            // If it's A->B->C, it will return C, B, A. Order is reversed
             return virtualNetworkGraph.bfsForShortestPath(sourceHost.location().deviceId(),
                     destinationHost.location().deviceId());
         }
