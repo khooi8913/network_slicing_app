@@ -22,10 +22,10 @@ public class RoutedNetworkListCommand extends AbstractShellCommand {
     @Override
     protected void execute() {
         NetworkId _networkId = NetworkId.networkId(networkId);
-        if(AppComponent.tenantRoutedNetworks.containsKey(_networkId)) {
+        if (AppComponent.tenantRoutedNetworks.containsKey(_networkId)) {
             RoutedNetworks routedNetworks = AppComponent.tenantRoutedNetworks.get(_networkId);
-            if(routedNetworks.networkGateway!=null){
-                for(Map.Entry<IpPrefix, IpAddress> networks : routedNetworks.networkGateway.entrySet()) {
+            if (routedNetworks.networkGateway != null) {
+                for (Map.Entry<IpPrefix, IpAddress> networks : routedNetworks.networkGateway.entrySet()) {
                     print("Network Address: " + networks.getKey().toString() + " Gateway: " + networks.getValue().toString());
                 }
             }

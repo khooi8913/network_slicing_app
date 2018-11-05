@@ -29,8 +29,8 @@ public class RoutedNetworkAddCommand extends AbstractShellCommand {
     protected void execute() {
         NetworkId _networkId = NetworkId.networkId(networkId);
         IpPrefix routedNetworkAddress = null;
-        IpAddress gatewayAddress= null;
-        
+        IpAddress gatewayAddress = null;
+
         try {
             routedNetworkAddress = IpPrefix.valueOf(networkCidr);
             gatewayAddress = IpAddress.valueOf(networkGateway);
@@ -38,14 +38,14 @@ public class RoutedNetworkAddCommand extends AbstractShellCommand {
             error(e.toString());
         }
 
-        if(routedNetworkAddress != null && gatewayAddress != null){
-            if(routedNetworkAddress.contains(gatewayAddress)) {
-                if(!AppComponent.tenantRoutedNetworks.containsKey(_networkId)) {
+        if (routedNetworkAddress != null && gatewayAddress != null) {
+            if (routedNetworkAddress.contains(gatewayAddress)) {
+                if (!AppComponent.tenantRoutedNetworks.containsKey(_networkId)) {
                     AppComponent.tenantRoutedNetworks.put(_networkId, new RoutedNetworks());
                 }
                 AppComponent.tenantRoutedNetworks.get(_networkId).networkGateway.put(routedNetworkAddress, gatewayAddress);
                 print("Routed network entry added successfully!");
-            }else {
+            } else {
                 print("Gateway does not belong to the specified network!");
             }
         }

@@ -26,11 +26,11 @@ public class VirtualNetworkGraph {
         adj.get(sourceDeviceId).add(destinationDeviceId);
     }
 
-    public ArrayList<DeviceId> bfsForShortestPath (DeviceId sourceDeviceId, DeviceId destinationDeviceId) {
+    public ArrayList<DeviceId> bfsForShortestPath(DeviceId sourceDeviceId, DeviceId destinationDeviceId) {
         HashMap<DeviceId, Boolean> visited = new HashMap<>();
         ArrayList<DeviceId> shortestPathList = new ArrayList<>();
 
-        if(sourceDeviceId.equals(destinationDeviceId)) {
+        if (sourceDeviceId.equals(destinationDeviceId)) {
             return shortestPathList;
         }
 
@@ -41,16 +41,16 @@ public class VirtualNetworkGraph {
         pathStack.add(sourceDeviceId);
         visited.put(sourceDeviceId, true);
 
-        while(!queue.isEmpty()) {
+        while (!queue.isEmpty()) {
             DeviceId currentDevice = queue.poll();
             LinkedList<DeviceId> adjList = this.adj.get(currentDevice);
 
-            for(DeviceId deviceId : adjList) {
-                if(!visited.containsKey(deviceId)) {
-                    if(deviceId.equals(destinationDeviceId)){
+            for (DeviceId deviceId : adjList) {
+                if (!visited.containsKey(deviceId)) {
+                    if (deviceId.equals(destinationDeviceId)) {
                         pathStack.add(deviceId);
                         break;
-                    }else{
+                    } else {
                         queue.add(deviceId);
                         visited.put(deviceId, true);
                         pathStack.add(deviceId);
@@ -62,15 +62,15 @@ public class VirtualNetworkGraph {
         DeviceId node;
         DeviceId currentSrc = destinationDeviceId;
         shortestPathList.add(destinationDeviceId);
-        while(!pathStack.isEmpty()) {
+        while (!pathStack.isEmpty()) {
             node = pathStack.pop();
-            if(this.adj.get(currentSrc).contains(node) &&
+            if (this.adj.get(currentSrc).contains(node) &&
                     this.adj.get(node).contains(currentSrc)) {
 
                 shortestPathList.add(node);
                 currentSrc = node;
 
-                if(node.equals(sourceDeviceId)) {
+                if (node.equals(sourceDeviceId)) {
                     break;
                 }
 
