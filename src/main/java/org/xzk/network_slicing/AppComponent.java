@@ -61,6 +61,7 @@ public class AppComponent {
     protected EdgePortService edgePortService;
 
     // TenantId/ NetworkId <-> IpNetworks/ Gateway
+    private final byte[] gatewayMac = {00, 01, 02, 03, 04, 05};
     public static HashMap<NetworkId, RoutedNetworks> tenantRoutedNetworks;
 
     @Activate
@@ -99,7 +100,6 @@ public class AppComponent {
 
     private class VirtualNetworkPacketProcessor implements PacketProcessor {
 
-        private final byte[] gatewayMac = {00, 01, 02, 03, 04, 05};
         private HashMap<DeviceId, MplsLabelPool> mplsLabelPool = new HashMap<>();
         private HashMap<DeviceId, MplsForwardingTable> mplsForwardingTable = new HashMap<>();
 
@@ -471,7 +471,7 @@ public class AppComponent {
             return null;
         }
 
-        // TODO
+        // TODO: Implementation
         private VirtualHost getDestinationHost(IpAddress ipAddress, NetworkId networkId) {
             Set<VirtualHost> virtualHosts = virtualNetworkAdminService.getVirtualHosts(networkId);
             for (VirtualHost virtualHost : virtualHosts) {
@@ -557,7 +557,7 @@ public class AppComponent {
         }
 
         private List<InOutPort> extractInOutPorts(List<Link> links, VirtualHost sourceHost, VirtualHost destinationHost) {
-            List<InOutPort> inOutPorts = new ArrayList<>();
+            List<InOutPort> inOutPorts = new LinkedList<>();
             for (int i = 0; i < links.size(); i++) {
 
                 if (i == 0) {

@@ -1,10 +1,15 @@
 package org.xzk.network_slicing;
 
 import org.onosproject.net.DeviceId;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.*;
 
+
 public class VirtualNetworkGraph {
+
+    private final Logger log = LoggerFactory.getLogger(getClass());
 
     private int V;
     private HashMap<DeviceId, LinkedList<DeviceId>> adj;
@@ -42,15 +47,20 @@ public class VirtualNetworkGraph {
 
             for(DeviceId deviceId : adjList) {
                 if(!visited.containsKey(deviceId)) {
-                    queue.add(deviceId);
-                    visited.put(deviceId, true);
-                    pathStack.add(deviceId);
-                    if(currentDevice.equals(destinationDeviceId)){
+                    if(deviceId.equals(destinationDeviceId)){
+                        pathStack.add(deviceId);
                         break;
+                    }else{
+                        queue.add(deviceId);
+                        visited.put(deviceId, true);
+                        pathStack.add(deviceId);
                     }
                 }
             }
         }
+
+        log.info(queue.toString());
+        log.info(pathStack.toString());
 
         // TODO: Something wrong there.......
         // What is the problem with this implementation?
