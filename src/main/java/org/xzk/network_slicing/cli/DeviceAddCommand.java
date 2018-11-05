@@ -22,7 +22,6 @@ public class DeviceAddCommand extends AbstractShellCommand {
 
     @Override
     protected void execute() {
-
         VirtualNetworkAdminService virtualNetworkAdminService = get(VirtualNetworkAdminService.class);
         DeviceService deviceService = getService(DeviceService.class);
 
@@ -32,6 +31,6 @@ public class DeviceAddCommand extends AbstractShellCommand {
         } else {
             error("Device does not exists in underlying network.");
         }
-
     }
+
 }

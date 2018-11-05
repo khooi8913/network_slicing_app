@@ -31,6 +31,12 @@
         <command>
             <action class="org.xzk.network_slicing.cli.EdgePortAddCommand"/>
         </command>
+        <command>
+            <action class="org.xzk.network_slicing.cli.RoutedNetworkAddCommand"/>
+        </command>
+        <command>
+            <action class="org.xzk.network_slicing.cli.RoutedNetworkListCommand"/>
+        </command>
     </command-bundle>
 
 </blueprint>

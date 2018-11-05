@@ -26,10 +26,7 @@ import org.onosproject.net.flow.*;
 import org.onosproject.net.flowobjective.DefaultForwardingObjective;
 import org.onosproject.net.flowobjective.FlowObjectiveService;
 import org.onosproject.net.flowobjective.ForwardingObjective;
-import org.onosproject.net.host.HostService;
 import org.onosproject.net.packet.*;
-import org.onosproject.net.topology.TopologyService;
-import org.osgi.service.device.Device;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,16 +49,10 @@ public class AppComponent {
     protected PacketService packetService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
-    protected TopologyService topologyService;
-
-    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
-    protected HostService hostService;
+    protected FlowRuleService flowRuleService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected FlowObjectiveService flowObjectiveService;
-
-    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
-    protected FlowRuleService flowRuleService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected VirtualNetworkAdminService virtualNetworkAdminService;
@@ -69,11 +60,15 @@ public class AppComponent {
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected EdgePortService edgePortService;
 
+    // TenantId/ NetworkId <-> IpNetworks/ Gateway
+    public static HashMap<NetworkId, RoutedNetworks> tenantRoutedNetworks;
+
     @Activate
     protected void activate() {
         appId = coreService.registerApplication("org.xzk.network_slicing");
         requestIntercepts();
         packetService.addProcessor(virtualNetworkPacketProcessor, PacketProcessor.director(2));
+        tenantRoutedNetworks = new HashMap<>();
         log.info("Started");
     }
 
@@ -98,69 +93,63 @@ public class AppComponent {
         withdrawIntercepts();
         flowRuleService.removeFlowRulesById(appId);
         virtualNetworkPacketProcessor = null;
+        tenantRoutedNetworks = null;
         log.info("Stopped");
     }
 
     private class VirtualNetworkPacketProcessor implements PacketProcessor {
 
+        private final byte[] gatewayMac = {00, 01, 02, 03, 04, 05};
         private HashMap<DeviceId, MplsLabelPool> mplsLabelPool = new HashMap<>();
         private HashMap<DeviceId, MplsForwardingTable> mplsForwardingTable = new HashMap<>();
 
         @Override
         public void process(PacketContext packetContext) {
-
             // Stop processing if the packet has already been handled.
             // Nothing much more can be done.
-            if (packetContext.isHandled()) {
-                return;
-            }
+            if (packetContext.isHandled())  return;
 
             InboundPacket inboundPacket = packetContext.inPacket();
             Ethernet ethernetPacket = inboundPacket.parsed();
 
             // Only process packets coming from the network edge
-            if (!isEdgePort(packetContext)) {
-                return;
-            }
+            if (!isEdgePort(packetContext)) return;
 
             // Do not process null packets
-            if (ethernetPacket == null) {
-                return;
-            }
+            if (ethernetPacket == null)     return;
 
-            // Retrieve Port Information
-            TenantIdNetworkIdPair tenantIdAndNetworkId = getTenantIdAndNetworkId(packetContext);
-            if (tenantIdAndNetworkId == null) {
-                return;
-            }
+            // Retrieve TenantId Information
+            TenantId currentTenantId = getTenantId(packetContext);
 
-            // Register/ get incoming host information
-            VirtualHost sourceHost = getSourceHostInformation(
+            // Retrieve NetworkId Information
+            NetworkId currentNetworkId = getNetworkId(packetContext);
+
+            // Register incoming host information
+            VirtualHost sourceHost = getSourceHost(
                     packetContext,
-                    tenantIdAndNetworkId.getNetworkId()
+                    currentNetworkId
             );
 
-            if (sourceHost == null) {
-                return;
-            }
+            if (sourceHost == null) return;
 
-            TrafficSelector.Builder selector = null;
-            TrafficTreatment.Builder treatment = null;
+            TrafficSelector.Builder selector;
+            TrafficTreatment.Builder treatment;
 
             switch (EthType.EtherType.lookup(ethernetPacket.getEtherType())) {
-
                 case ARP:
                     log.info("ARP packet received");
 
                     ARP arpPacket = (ARP) ethernetPacket.getPayload();
-                    MacAddress destinationMacAddress = getDestinationMacAddress(arpPacket, tenantIdAndNetworkId.getNetworkId());
+                    MacAddress destinationMacAddress = getDestinationMac(
+                            arpPacket,
+                            currentNetworkId
+                    );
 
                     if (destinationMacAddress == null) {
                         log.info("Destination host does not exist!");
                         return;
                     }
 
-                    // Construct ARP Reply
                     Ip4Address destinationIpAddress = Ip4Address.valueOf(arpPacket.getTargetProtocolAddress());
                     Ethernet ethernet = ARP.buildArpReply(destinationIpAddress, destinationMacAddress, ethernetPacket);
 
@@ -171,17 +160,16 @@ public class AppComponent {
                             treatment.build(),
                             ByteBuffer.wrap(ethernet.serialize())
                     ));
-                    log.info("ARP reply generated!");
+                    log.info("ARP reply sent!");
                     break;
 
                 case IPV4:
-
                     log.info("IPv4 packet received!");
 
                     // Get destination host information
-                    VirtualHost destinationHost = getDestinationHostInformation(
+                    VirtualHost destinationHost = getDestinationHost(
                             ethernetPacket.getDestinationMAC(),
-                            tenantIdAndNetworkId.getNetworkId()
+                            currentNetworkId
                     );
 
                     if (destinationHost == null) {
@@ -189,19 +177,15 @@ public class AppComponent {
                         return;
                     }
 
-                    // TODO: Check network
-                    // TODO: If different subnet, check routing table
-                    // TODO: Gateway resolution
-
-                    // Both hosts located on the same device
-                    if (sourceHost.location().deviceId().equals(destinationHost.location().deviceId())) {
-
-                        // TODO: Forward to the designated port
+                    if (isHostOnSameDevice(sourceHost, destinationHost)) {
                         selector = DefaultTrafficSelector.builder();
                         treatment = DefaultTrafficTreatment.builder();
 
                         IPv4 ipPacket = (IPv4) ethernetPacket.getPayload();
-                        Ip4Prefix ip4DstPrefix = Ip4Prefix.valueOf(ipPacket.getDestinationAddress(), Ip4Prefix.MAX_MASK_LENGTH);
+                        Ip4Prefix ip4DstPrefix = Ip4Prefix.valueOf(
+                                ipPacket.getDestinationAddress(),
+                                Ip4Prefix.MAX_MASK_LENGTH
+                        );
 
                         PortNumber inPort = sourceHost.location().port();
                         PortNumber outPort = destinationHost.location().port();
@@ -227,24 +211,29 @@ public class AppComponent {
                         // Forward out current packet
                         packetOut(packetContext, outPort);
                         log.info("Packet out!");
-
                     } else {
                         // Path computation here
                         // TODO: BUG HERE !!!!!
                         log.info("Path Computation");
-                        ArrayList<DeviceId> pathNodes = getForwardPathIfPossible(tenantIdAndNetworkId.getNetworkId(), sourceHost, destinationHost);
+
+                        ArrayList<DeviceId> pathNodes = getForwardPathIfPossible(
+                                currentNetworkId,
+                                sourceHost,
+                                destinationHost
+                        );
                         Collections.reverse(pathNodes);
+
                         for (DeviceId deviceId : pathNodes) log.info(deviceId.toString());
 
-                        if (pathNodes == null) {
+                        if (pathNodes.isEmpty()) {
                             log.info("Unable to find valid path!");
                             return;
                         }
 
-                        List<Link> pathLinks = getForwardPathLinks(tenantIdAndNetworkId.getNetworkId(), pathNodes);
+                        List<Link> pathLinks = getForwardPathLinks(currentNetworkId, pathNodes);
                         for (Link link : pathLinks) log.info(link.src().toString() + " " + link.dst().toString());
 
-                        if (pathLinks == null) {
+                        if (pathLinks.isEmpty()) {
                             log.info("Unable to find valid path!");
                             return;
                         }
@@ -263,7 +252,10 @@ public class AppComponent {
 
                         // Extract Destination IP
                         IPv4 ipPacket = (IPv4) ethernetPacket.getPayload();
-                        Ip4Prefix ip4DstPrefix = Ip4Prefix.valueOf(ipPacket.getDestinationAddress(), Ip4Prefix.MAX_MASK_LENGTH);
+                        Ip4Prefix ip4DstPrefix = Ip4Prefix.valueOf(
+                                ipPacket.getDestinationAddress(),
+                                Ip4Prefix.MAX_MASK_LENGTH
+                        );
 
                         for (int i = inOutPorts.size() - 1; i >= 0; i--) {
                             selector = DefaultTrafficSelector.builder();
@@ -278,7 +270,7 @@ public class AppComponent {
                             if (currentDeviceId.equals(destinationHost.location().deviceId())) {   // Terminating Switch
                                 log.info("Flow installing for terminating switch");
                                 if (mplsForwardingTable.get(currentDeviceId).getMplsLabel(
-                                        tenantIdAndNetworkId.getNetworkId(), destinationHost.id()) == null) {
+                                        currentNetworkId, destinationHost.id()) == null) {
 
                                     currentLabel = MplsLabel.mplsLabel(mplsLabelPool
                                             .get(currentDeviceId)
@@ -286,10 +278,10 @@ public class AppComponent {
                                     );
                                 } else {
                                     currentLabel = mplsForwardingTable.get(currentDeviceId).getMplsLabel(
-                                            tenantIdAndNetworkId.getNetworkId(), destinationHost.id());
+                                            currentNetworkId, destinationHost.id());
 
                                     mplsForwardingTable.get(currentDeviceId).addLabelToHost(
-                                            tenantIdAndNetworkId.getNetworkId(), destinationHost.id(), currentLabel
+                                            currentNetworkId, destinationHost.id(), currentLabel
                                     );
                                 }
 
@@ -302,10 +294,11 @@ public class AppComponent {
                                 treatment.setOutput(outPort);
 
                                 previousLabel = currentLabel;
-                            } else if (currentDeviceId.equals(sourceHost.location().deviceId())) {    // Originating Switch
+                            } else if (currentDeviceId.equals(sourceHost.location().deviceId())) {
+                                // Originating Switch
                                 log.info("Flow installing for originating switch");
                                 mplsForwardingTable.get(currentDeviceId).addLabelToHost(
-                                        tenantIdAndNetworkId.getNetworkId(), destinationHost.id(), previousLabel
+                                        currentNetworkId, destinationHost.id(), previousLabel
                                 );
 
                                 selector.matchInPort(inPort);
@@ -315,19 +308,20 @@ public class AppComponent {
                                 treatment.pushMpls();
                                 treatment.setMpls(previousLabel);
                                 treatment.setOutput(outPort);
-                            } else {    // LSRs
+                            } else {
+                                // LSRs
                                 log.info("Flow installing for LSRs");
                                 if (mplsForwardingTable.get(currentDeviceId).getMplsLabel(
-                                        tenantIdAndNetworkId.getNetworkId(), destinationHost.id()) == null) {
+                                        currentNetworkId, destinationHost.id()) == null) {
                                     currentLabel = MplsLabel.mplsLabel(mplsLabelPool
                                             .get(currentDeviceId)
                                             .getNextLabel()
                                     );
                                 } else {
                                     currentLabel = mplsForwardingTable.get(currentDeviceId).getMplsLabel(
-                                            tenantIdAndNetworkId.getNetworkId(), destinationHost.id());
+                                            currentNetworkId, destinationHost.id());
                                     mplsForwardingTable.get(currentDeviceId).addLabelToHost(
-                                            tenantIdAndNetworkId.getNetworkId(), destinationHost.id(), currentLabel
+                                            currentNetworkId, destinationHost.id(), currentLabel
                                     );
                                 }
 
@@ -358,17 +352,19 @@ public class AppComponent {
                         packetOut(packetContext, inOutPorts.get(0).outPort);
                         log.info("Packet out!");
                     }
-
                     break;
             }
         }
 
-        private TenantIdNetworkIdPair getTenantIdAndNetworkId(PacketContext packetContext) {
+        private boolean isEdgePort(PacketContext packetContext) {
+            Iterable<ConnectPoint> edgePorts = edgePortService.getEdgePoints();
+            return StreamSupport
+                    .stream(edgePorts.spliterator(), false)
+                    .anyMatch(packetContext.inPacket().receivedFrom()::equals);
+        }
 
-            // TODO: More efficient implementation
-            // Get all tenants
-            Set<TenantId> tenantIds =
-                    virtualNetworkAdminService.getTenantIds();
+        private TenantId getTenantId(PacketContext packetContext) {
+            Set<TenantId> tenantIds = virtualNetworkAdminService.getTenantIds();
             for (TenantId tenantId : tenantIds) {
                 // Get all virtual networks per tenant
                 Set<VirtualNetwork> virtualNetworks =
@@ -382,8 +378,7 @@ public class AppComponent {
                                 virtualNetworkAdminService.getVirtualPorts(virtualNetwork.id(), virtualDevice.id());
                         for (VirtualPort virtualPort : virtualPorts) {
                             if (packetContext.inPacket().receivedFrom().equals(virtualPort.realizedBy())) {
-                                // Return something here
-                                return new TenantIdNetworkIdPair(tenantId, virtualNetwork.id());
+                                return tenantId;
                             }
                         }
                     }
@@ -392,17 +387,31 @@ public class AppComponent {
             return null;
         }
 
-        private boolean isEdgePort(PacketContext packetContext) {
-
-            Iterable<ConnectPoint> edgePorts = edgePortService.getEdgePoints();
-
-            return StreamSupport
-                    .stream(edgePorts.spliterator(), false)
-                    .anyMatch(packetContext.inPacket().receivedFrom()::equals);
+        private NetworkId getNetworkId(PacketContext packetContext) {
+            Set<TenantId> tenantIds = virtualNetworkAdminService.getTenantIds();
+            for (TenantId tenantId : tenantIds) {
+                // Get all virtual networks per tenant
+                Set<VirtualNetwork> virtualNetworks =
+                        virtualNetworkAdminService.getVirtualNetworks(tenantId);
+                for (VirtualNetwork virtualNetwork : virtualNetworks) {
+                    // Get all the connect points registered
+                    Set<VirtualDevice> virtualDevices =
+                            virtualNetworkAdminService.getVirtualDevices(virtualNetwork.id());
+                    for (VirtualDevice virtualDevice : virtualDevices) {
+                        Set<VirtualPort> virtualPorts =
+                                virtualNetworkAdminService.getVirtualPorts(virtualNetwork.id(), virtualDevice.id());
+                        for (VirtualPort virtualPort : virtualPorts) {
+                            if (packetContext.inPacket().receivedFrom().equals(virtualPort.realizedBy())) {
+                                return virtualNetwork.id();
+                            }
+                        }
+                    }
+                }
+            }
+            return null;
         }
 
-        private VirtualHost getSourceHostInformation(PacketContext packetContext, NetworkId networkId) {
-
+        private VirtualHost getSourceHost(PacketContext packetContext, NetworkId networkId) {
             InboundPacket inboundPacket = packetContext.inPacket();
             Ethernet ethernetPacket = inboundPacket.parsed();
 
@@ -450,7 +459,7 @@ public class AppComponent {
             return virtualHost;
         }
 
-        private VirtualHost getDestinationHostInformation(MacAddress destinationMacAddress, NetworkId networkId) {
+        private VirtualHost getDestinationHost(MacAddress destinationMacAddress, NetworkId networkId) {
 
             Set<VirtualHost> virtualHosts = virtualNetworkAdminService.getVirtualHosts(networkId);
             for (VirtualHost virtualHost : virtualHosts) {
@@ -462,19 +471,50 @@ public class AppComponent {
             return null;
         }
 
-        private MacAddress getDestinationMacAddress(ARP arpPacket, NetworkId networkId) {
+        // TODO
+        private VirtualHost getDestinationHost(IpAddress ipAddress, NetworkId networkId) {
+            Set<VirtualHost> virtualHosts = virtualNetworkAdminService.getVirtualHosts(networkId);
+            for (VirtualHost virtualHost : virtualHosts) {
+                if (virtualHost.ipAddresses().contains(ipAddress)) {
+                    return virtualHost;
+                }
+            }
+            return null;
+        }
+
+        private MacAddress getDestinationMac(ARP arpPacket, NetworkId networkId) {
 
             byte[] destinationIpAddress = arpPacket.getTargetProtocolAddress();
+            IpAddress destinationIp = IpAddress.valueOf(IpAddress.Version.INET, destinationIpAddress);
 
+            // If ARP is for gateway
+            if(AppComponent.tenantRoutedNetworks.containsKey(networkId)) {
+                RoutedNetworks routedNetworks = AppComponent.tenantRoutedNetworks.get(networkId);
+                if(routedNetworks.networkGateway!=null) {
+                    for(Map.Entry<IpPrefix, IpAddress> networks : routedNetworks.networkGateway.entrySet()) {
+                        if(destinationIp.equals(networks.getValue())) {
+                            log.info("ARP reply for gateway!");
+                            return new MacAddress(gatewayMac);
+                        }
+                    }
+                }
+            }
+
+            // If not gateway found, most probably it belongs to a host
             Set<VirtualHost> virtualHosts = virtualNetworkAdminService.getVirtualHosts(networkId);
             for (VirtualHost virtualHost : virtualHosts) {
                 if (virtualHost.ipAddresses().contains(
                         IpAddress.valueOf(IpAddress.Version.INET, destinationIpAddress))) {
+                    log.info("ARP reply for host!");
                     return virtualHost.mac();
                 }
             }
 
             return null;
+        }
+
+        private boolean isHostOnSameDevice(VirtualHost sourceHost, VirtualHost destinationHost){
+            return sourceHost.location().deviceId().equals(destinationHost.location().deviceId());
         }
 
         // Custom implementation of path computation
@@ -583,27 +623,7 @@ public class AppComponent {
             return true;          // all elements in B are also in A
         }
 
-        class TenantIdNetworkIdPair {
-
-            private TenantId tenantId;
-            private NetworkId networkId;
-
-            public TenantIdNetworkIdPair(TenantId tenantId, NetworkId networkId) {
-                this.tenantId = tenantId;
-                this.networkId = networkId;
-            }
-
-            public TenantId getTenantId() {
-                return tenantId;
-            }
-
-            public NetworkId getNetworkId() {
-                return networkId;
-            }
-        }
-
         class SimpleLink {
-
             private ConnectPoint src;
             private ConnectPoint dst;
 
@@ -659,7 +679,5 @@ public class AppComponent {
                         '}';
             }
         }
-
     }
-
 }

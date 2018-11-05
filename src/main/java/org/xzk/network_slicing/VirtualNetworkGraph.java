@@ -1,6 +1,5 @@
 package org.xzk.network_slicing;
 
-import org.onosproject.net.Device;
 import org.onosproject.net.DeviceId;
 
 import java.util.*;
@@ -27,7 +26,7 @@ public class VirtualNetworkGraph {
         ArrayList<DeviceId> shortestPathList = new ArrayList<>();
 
         if(sourceDeviceId.equals(destinationDeviceId)) {
-            return null;
+            return shortestPathList;
         }
 
         Queue<DeviceId> queue = new LinkedList<>();
