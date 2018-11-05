@@ -59,12 +59,6 @@ public class VirtualNetworkGraph {
             }
         }
 
-        log.info(queue.toString());
-        log.info(pathStack.toString());
-
-        // TODO: Something wrong there.......
-        // What is the problem with this implementation?
-
         DeviceId node;
         DeviceId currentSrc = destinationDeviceId;
         shortestPathList.add(destinationDeviceId);
