@@ -608,45 +608,6 @@ public class AppComponent {
             packetContext.send();
         }
 
-        // Custom containsAll implementation
-        private boolean containsAll(List<?> a, List<?> b) {
-            // List doesn't support remove(), use ArrayList instead
-            ArrayList<Object> x = new ArrayList<Object>();
-            ArrayList<Object> y = new ArrayList<Object>();
-
-            x.addAll(a);
-            y.addAll(b);
-            for (Object o : y) {
-                if (!x.remove(o)) // an element in B is not in A!
-                    return false;
-            }
-            return true;          // all elements in B are also in A
-        }
-
-        class SimpleLink {
-            private ConnectPoint src;
-            private ConnectPoint dst;
-
-            public SimpleLink(ConnectPoint src, ConnectPoint dst) {
-                this.src = src;
-                this.dst = dst;
-            }
-
-            @Override
-            public boolean equals(Object o) {
-                if (this == o) return true;
-                if (o == null || getClass() != o.getClass()) return false;
-                SimpleLink that = (SimpleLink) o;
-                return Objects.equals(src, that.src) &&
-                        Objects.equals(dst, that.dst);
-            }
-
-            @Override
-            public int hashCode() {
-                return Objects.hash(src.toString(), dst.toString());
-            }
-        }
-
         class InOutPort {
             private DeviceId deviceId;
             private PortNumber inPort;
