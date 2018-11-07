@@ -166,27 +166,10 @@ public class AppComponent {
                     log.info("IPv4 packet received!");
 
                     // If the destination MAC is headed to the gateway, which means to different network
-                    VirtualHost destinationHost;
                     boolean isToBeRouted = isToBeRouted(ethernetPacket.getDestinationMAC());
-                    if (isToBeRouted) {
-                        IPv4 ipPacket = (IPv4) ethernetPacket.getPayload();
-                        IpAddress ipDstAddress = IpAddress.valueOf(
-                                ipPacket.getDestinationAddress()
-                        );
-                        log.info("Packet is to be routed!");
-                        // Get destination host information
-                        destinationHost = getDestinationHost(
-                                ipDstAddress,
-                                currentNetworkId
-                        );
-                    } else {
-                        // Get destination host information
-                        destinationHost = getDestinationHost(
-                                ethernetPacket.getDestinationMAC(),
-                                currentNetworkId
-                        );
-                    }
+                    VirtualHost destinationHost = getDestinationHost(isToBeRouted, ethernetPacket, currentNetworkId);
 
+                    // What if headed to external network?
                     if (destinationHost == null) {
                         log.info("Destination host does not exist!");
                         return;
@@ -499,6 +482,28 @@ public class AppComponent {
                 }
             }
             return null;
+        }
+
+        private VirtualHost getDestinationHost(boolean isToBeRouted, Ethernet ethernetPacket, NetworkId networkId) {
+            if (isToBeRouted) {
+                log.info("Packet is to be routed!");
+
+                IPv4 ipPacket = (IPv4) ethernetPacket.getPayload();
+                IpAddress ipDstAddress = IpAddress.valueOf(
+                        ipPacket.getDestinationAddress()
+                );
+                // Get destination host information
+                return getDestinationHost(
+                        ipDstAddress,
+                        networkId
+                );
+            } else {
+                // Get destination host information
+                return getDestinationHost(
+                        ethernetPacket.getDestinationMAC(),
+                        networkId
+                );
+            }
         }
 
         private MacAddress getDestinationMac(ARP arpPacket, NetworkId networkId) {
