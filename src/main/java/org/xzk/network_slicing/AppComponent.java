@@ -210,7 +210,7 @@ public class AppComponent {
                         selector.matchIPDst(ip4DstPrefix);
 
                         treatment.setOutput(outPort);
-                        if(isToBeRouted) {
+                        if (isToBeRouted) {
                             treatment.setEthDst(destinationHost.mac());
                         }
 
@@ -322,7 +322,7 @@ public class AppComponent {
                                 selector.matchIPDst(ip4DstPrefix);
                                 selector.matchEthType(Ethernet.TYPE_IPV4);
 
-                                if(isToBeRouted) {
+                                if (isToBeRouted) {
                                     treatment.setEthDst(destinationHost.mac());
                                 }
                                 treatment.pushMpls();
