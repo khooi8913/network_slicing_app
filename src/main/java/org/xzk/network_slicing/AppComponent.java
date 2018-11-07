@@ -107,7 +107,7 @@ public class AppComponent {
         public void process(PacketContext packetContext) {
             // Stop processing if the packet has already been handled.
             // Nothing much more can be done.
-            if (packetContext.isHandled())  return;
+            if (packetContext.isHandled()) return;
 
             InboundPacket inboundPacket = packetContext.inPacket();
             Ethernet ethernetPacket = inboundPacket.parsed();
@@ -116,7 +116,7 @@ public class AppComponent {
             if (!isEdgePort(packetContext)) return;
 
             // Do not process null packets
-            if (ethernetPacket == null)     return;
+            if (ethernetPacket == null) return;
 
             // Retrieve TenantId Information
             TenantId currentTenantId = getTenantId(packetContext);
@@ -129,7 +129,6 @@ public class AppComponent {
                     packetContext,
                     currentNetworkId
             );
-
             if (sourceHost == null) return;
 
             TrafficSelector.Builder selector;
@@ -166,11 +165,27 @@ public class AppComponent {
                 case IPV4:
                     log.info("IPv4 packet received!");
 
-                    // Get destination host information
-                    VirtualHost destinationHost = getDestinationHost(
-                            ethernetPacket.getDestinationMAC(),
-                            currentNetworkId
-                    );
+                    // If the destination MAC is headed to the gateway, which means to different network
+                    VirtualHost destinationHost;
+                    boolean isToBeRouted = isToBeRouted(ethernetPacket.getDestinationMAC());
+                    if (isToBeRouted) {
+                        IPv4 ipPacket = (IPv4) ethernetPacket.getPayload();
+                        IpAddress ipDstAddress = IpAddress.valueOf(
+                                ipPacket.getDestinationAddress()
+                        );
+                        log.info("Packet is to be routed!");
+                        // Get destination host information
+                        destinationHost = getDestinationHost(
+                                ipDstAddress,
+                                currentNetworkId
+                        );
+                    } else {
+                        // Get destination host information
+                        destinationHost = getDestinationHost(
+                                ethernetPacket.getDestinationMAC(),
+                                currentNetworkId
+                        );
+                    }
 
                     if (destinationHost == null) {
                         log.info("Destination host does not exist!");
@@ -195,6 +210,9 @@ public class AppComponent {
                         selector.matchIPDst(ip4DstPrefix);
 
                         treatment.setOutput(outPort);
+                        if(isToBeRouted) {
+                            treatment.setEthDst(destinationHost.mac());
+                        }
 
                         // Build forwarding objective
                         ForwardingObjective forwardingObjective = DefaultForwardingObjective.builder()
@@ -213,7 +231,6 @@ public class AppComponent {
                         log.info("Packet out!");
                     } else {
                         // Path computation here
-                        // TODO: BUG HERE !!!!!
                         log.info("Path Computation");
 
                         ArrayList<DeviceId> pathNodes = getForwardPathIfPossible(
@@ -305,6 +322,9 @@ public class AppComponent {
                                 selector.matchIPDst(ip4DstPrefix);
                                 selector.matchEthType(Ethernet.TYPE_IPV4);
 
+                                if(isToBeRouted) {
+                                    treatment.setEthDst(destinationHost.mac());
+                                }
                                 treatment.pushMpls();
                                 treatment.setMpls(previousLabel);
                                 treatment.setOutput(outPort);
@@ -471,7 +491,6 @@ public class AppComponent {
             return null;
         }
 
-        // TODO: Implementation
         private VirtualHost getDestinationHost(IpAddress ipAddress, NetworkId networkId) {
             Set<VirtualHost> virtualHosts = virtualNetworkAdminService.getVirtualHosts(networkId);
             for (VirtualHost virtualHost : virtualHosts) {
@@ -488,11 +507,11 @@ public class AppComponent {
             IpAddress destinationIp = IpAddress.valueOf(IpAddress.Version.INET, destinationIpAddress);
 
             // If ARP is for gateway
-            if(AppComponent.tenantRoutedNetworks.containsKey(networkId)) {
+            if (AppComponent.tenantRoutedNetworks.containsKey(networkId)) {
                 RoutedNetworks routedNetworks = AppComponent.tenantRoutedNetworks.get(networkId);
-                if(routedNetworks.networkGateway!=null) {
-                    for(Map.Entry<IpPrefix, IpAddress> networks : routedNetworks.networkGateway.entrySet()) {
-                        if(destinationIp.equals(networks.getValue())) {
+                if (routedNetworks.networkGateway != null) {
+                    for (Map.Entry<IpPrefix, IpAddress> networks : routedNetworks.networkGateway.entrySet()) {
+                        if (destinationIp.equals(networks.getValue())) {
                             log.info("ARP reply for gateway!");
                             return new MacAddress(gatewayMac);
                         }
@@ -513,8 +532,12 @@ public class AppComponent {
             return null;
         }
 
-        private boolean isHostOnSameDevice(VirtualHost sourceHost, VirtualHost destinationHost){
+        private boolean isHostOnSameDevice(VirtualHost sourceHost, VirtualHost destinationHost) {
             return sourceHost.location().deviceId().equals(destinationHost.location().deviceId());
+        }
+
+        private boolean isToBeRouted(MacAddress destinationMAC) {
+            return destinationMAC.equals(new MacAddress(gatewayMac));
         }
 
         // Custom implementation of path computation
