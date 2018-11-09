@@ -192,10 +192,10 @@ public class AppComponent {
                         selector.matchEthType(Ethernet.TYPE_IPV4);
                         selector.matchIPDst(ip4DstPrefix);
 
-                        treatment.setOutput(outPort);
                         if (isToBeRouted) {
                             treatment.setEthDst(destinationHost.mac());
                         }
+                        treatment.setOutput(outPort);
 
                         // Build forwarding objective
                         ForwardingObjective forwardingObjective = DefaultForwardingObjective.builder()
