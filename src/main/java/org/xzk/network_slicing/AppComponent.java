@@ -62,6 +62,7 @@ public class AppComponent {
 
     // TenantId/ NetworkId <-> IpNetworks/ Gateway
     private final byte[] gatewayMac = {00, 01, 02, 03, 04, 05};
+    private final int DEFAULT_PRIORITY = 100;
     public static HashMap<NetworkId, RoutedNetworks> tenantRoutedNetworks;
     public static HashMap<NetworkId, InstalledFlowRules> tenantFlowRules;
 
@@ -190,6 +191,8 @@ public class AppComponent {
                         PortNumber inPort = sourceHost.location().port();
                         PortNumber outPort = destinationHost.location().port();
 
+                        DeviceId currentDeviceId = sourceHost.location().deviceId();
+
                         selector.matchInPort(inPort);
                         selector.matchEthType(Ethernet.TYPE_IPV4);
                         selector.matchIPDst(ip4DstPrefix);
@@ -199,37 +202,18 @@ public class AppComponent {
                         }
                         treatment.setOutput(outPort);
 
-                        // Build forwarding objective
-                        ForwardingObjective forwardingObjective = DefaultForwardingObjective.builder()
-                                .withSelector(selector.build())
-                                .withTreatment(treatment.build())
-                                .withPriority(100)
-                                .fromApp(appId)
-                                .withFlag(ForwardingObjective.Flag.VERSATILE)
-                                .add();
-
-                        flowObjectiveService.forward(sourceHost.location().deviceId(), forwardingObjective);
+                        // Build & send forwarding objective
+                        sendFlowObjective(currentDeviceId, selector, treatment);
                         log.info("Flow objective sent to device!");
 
                         // Forward out current packet
                         packetOut(packetContext, outPort);
                         log.info("Packet out!");
 
-                        // TODO: Store the flowRule here
+                        // Store FlowRule
                         IpAddress src = IpAddress.valueOf(ipPacket.getSourceAddress());
                         IpAddress dst = IpAddress.valueOf(ipPacket.getDestinationAddress());
-                        FlowRule flowRule = DefaultFlowRule.builder()
-                                .withSelector(selector.build())
-                                .withTreatment(treatment.build())
-                                .withPriority(100)
-                                .withHardTimeout(FlowRule.MAX_TIMEOUT)
-                                .fromApp(appId)
-                                .forDevice(sourceHost.location().deviceId())
-                                .build();
-                        if(!tenantFlowRules.containsKey(currentNetworkId)){
-                            tenantFlowRules.put(currentNetworkId, new InstalledFlowRules());
-                        }
-                        tenantFlowRules.get(currentNetworkId).addFlowRule(src, dst, flowRule);
+                        storeFlowRule(src, dst, selector, treatment, currentDeviceId, currentNetworkId);
 
                     } else {
                         // Path computation here
@@ -276,10 +260,9 @@ public class AppComponent {
                                 Ip4Prefix.MAX_MASK_LENGTH
                         );
 
-                        // TODO: Store the flowRule here
+
                         IpAddress src = IpAddress.valueOf(ipPacket.getSourceAddress());
                         IpAddress dst = IpAddress.valueOf(ipPacket.getDestinationAddress());
-
 
                         for (int i = inOutPorts.size() - 1; i >= 0; i--) {
                             selector = DefaultTrafficSelector.builder();
@@ -362,31 +345,12 @@ public class AppComponent {
                                 previousLabel = currentLabel;
                             }
 
-                            // Build forwarding objective
-                            ForwardingObjective forwardingObjective = DefaultForwardingObjective.builder()
-                                    .withSelector(selector.build())
-                                    .withTreatment(treatment.build())
-                                    .withPriority(100)
-                                    .fromApp(appId)
-                                    .withFlag(ForwardingObjective.Flag.VERSATILE)
-                                    .add();
-
-                            flowObjectiveService.forward(currentDeviceId, forwardingObjective);
+                            // Build & send forwarding objective
+                            sendFlowObjective(currentDeviceId, selector, treatment);
                             log.info("Flow objective sent to device!" + currentDeviceId.toString());
 
-                            // TODO: Construct flowRule here
-                            FlowRule flowRule = DefaultFlowRule.builder()
-                                    .withSelector(selector.build())
-                                    .withTreatment(treatment.build())
-                                    .withPriority(100)
-                                    .withHardTimeout(FlowRule.MAX_TIMEOUT)
-                                    .fromApp(appId)
-                                    .forDevice(currentDeviceId)
-                                    .build();
-                            if(!tenantFlowRules.containsKey(currentNetworkId)){
-                                tenantFlowRules.put(currentNetworkId, new InstalledFlowRules());
-                            }
-                            tenantFlowRules.get(currentNetworkId).addFlowRule(src, dst, flowRule);
+                            // Store FlowRule
+                            storeFlowRule(src, dst, selector, treatment, currentDeviceId, currentNetworkId);
                         }
 
                         // Forward out current packet
@@ -668,10 +632,36 @@ public class AppComponent {
             }
         }
 
+        private void sendFlowObjective(DeviceId deviceId, TrafficSelector.Builder selector, TrafficTreatment.Builder treatment){
+            ForwardingObjective forwardingObjective = DefaultForwardingObjective.builder()
+                    .withSelector(selector.build())
+                    .withTreatment(treatment.build())
+                    .withPriority(DEFAULT_PRIORITY)
+                    .fromApp(appId)
+                    .withFlag(ForwardingObjective.Flag.VERSATILE)
+                    .add();
+            flowObjectiveService.forward(deviceId, forwardingObjective);
+        }
+
         // Sends a packet out the specified port.
         private void packetOut(PacketContext packetContext, PortNumber portNumber) {
             packetContext.treatmentBuilder().setOutput(portNumber);
             packetContext.send();
+        }
+
+        private void storeFlowRule(IpAddress src, IpAddress dst, TrafficSelector.Builder selector, TrafficTreatment.Builder treatment, DeviceId deviceId, NetworkId networkId) {
+            FlowRule flowRule = DefaultFlowRule.builder()
+                    .withSelector(selector.build())
+                    .withTreatment(treatment.build())
+                    .withPriority(DEFAULT_PRIORITY)
+                    .withHardTimeout(FlowRule.MAX_TIMEOUT)
+                    .fromApp(appId)
+                    .forDevice(deviceId)
+                    .build();
+            if(!tenantFlowRules.containsKey(networkId)){
+                tenantFlowRules.put(networkId, new InstalledFlowRules());
+            }
+            tenantFlowRules.get(networkId).addFlowRule(src, dst, flowRule);
         }
 
         class InOutPort {
