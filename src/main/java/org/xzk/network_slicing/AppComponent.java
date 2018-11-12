@@ -63,7 +63,7 @@ public class AppComponent {
     // TenantId/ NetworkId <-> IpNetworks/ Gateway
     private final byte[] gatewayMac = {00, 01, 02, 03, 04, 05};
     public static HashMap<NetworkId, RoutedNetworks> tenantRoutedNetworks;
-    public static HashMap<NetworkId, >
+    public static HashMap<NetworkId, InstalledFlowRules> tenantFlowRules;
 
     @Activate
     protected void activate() {
@@ -71,6 +71,7 @@ public class AppComponent {
         requestIntercepts();
         packetService.addProcessor(virtualNetworkPacketProcessor, PacketProcessor.director(2));
         tenantRoutedNetworks = new HashMap<>();
+        tenantFlowRules = new HashMap<>();
         log.info("Started");
     }
 
@@ -213,6 +214,23 @@ public class AppComponent {
                         // Forward out current packet
                         packetOut(packetContext, outPort);
                         log.info("Packet out!");
+
+                        // TODO: Store the flowRule here
+                        IpAddress src = IpAddress.valueOf(ipPacket.getSourceAddress());
+                        IpAddress dst = IpAddress.valueOf(ipPacket.getDestinationAddress());
+                        FlowRule flowRule = DefaultFlowRule.builder()
+                                .withSelector(selector.build())
+                                .withTreatment(treatment.build())
+                                .withPriority(100)
+                                .withHardTimeout(FlowRule.MAX_TIMEOUT)
+                                .fromApp(appId)
+                                .forDevice(sourceHost.location().deviceId())
+                                .build();
+                        if(!tenantFlowRules.containsKey(currentNetworkId)){
+                            tenantFlowRules.put(currentNetworkId, new InstalledFlowRules());
+                        }
+                        tenantFlowRules.get(currentNetworkId).addFlowRule(src, dst, flowRule);
+
                     } else {
                         // Path computation here
                         log.info("Path Computation");
@@ -257,6 +275,11 @@ public class AppComponent {
                                 ipPacket.getDestinationAddress(),
                                 Ip4Prefix.MAX_MASK_LENGTH
                         );
+
+                        // TODO: Store the flowRule here
+                        IpAddress src = IpAddress.valueOf(ipPacket.getSourceAddress());
+                        IpAddress dst = IpAddress.valueOf(ipPacket.getDestinationAddress());
+
 
                         for (int i = inOutPorts.size() - 1; i >= 0; i--) {
                             selector = DefaultTrafficSelector.builder();
@@ -350,6 +373,20 @@ public class AppComponent {
 
                             flowObjectiveService.forward(currentDeviceId, forwardingObjective);
                             log.info("Flow objective sent to device!" + currentDeviceId.toString());
+
+                            // TODO: Construct flowRule here
+                            FlowRule flowRule = DefaultFlowRule.builder()
+                                    .withSelector(selector.build())
+                                    .withTreatment(treatment.build())
+                                    .withPriority(100)
+                                    .withHardTimeout(FlowRule.MAX_TIMEOUT)
+                                    .fromApp(appId)
+                                    .forDevice(currentDeviceId)
+                                    .build();
+                            if(!tenantFlowRules.containsKey(currentNetworkId)){
+                                tenantFlowRules.put(currentNetworkId, new InstalledFlowRules());
+                            }
+                            tenantFlowRules.get(currentNetworkId).addFlowRule(src, dst, flowRule);
                         }
 
                         // Forward out current packet

@@ -37,6 +37,9 @@
         <command>
             <action class="org.xzk.network_slicing.cli.RoutedNetworkListCommand"/>
         </command>
+        <command>
+            <action class="org.xzk.network_slicing.cli.DeleteFlowCommand"/>
+        </command>
     </command-bundle>
 
 </blueprint>
