@@ -63,6 +63,7 @@ public class AppComponent {
     // TenantId/ NetworkId <-> IpNetworks/ Gateway
     private final byte[] gatewayMac = {00, 01, 02, 03, 04, 05};
     public static HashMap<NetworkId, RoutedNetworks> tenantRoutedNetworks;
+    public static HashMap<NetworkId, >
 
     @Activate
     protected void activate() {
@@ -641,21 +642,21 @@ public class AppComponent {
             private PortNumber inPort;
             private PortNumber outPort;
 
-            public InOutPort(DeviceId deviceId, PortNumber inPort, PortNumber outPort) {
+            InOutPort(DeviceId deviceId, PortNumber inPort, PortNumber outPort) {
                 this.deviceId = deviceId;
                 this.inPort = inPort;
                 this.outPort = outPort;
             }
 
-            public DeviceId getDeviceId() {
+            DeviceId getDeviceId() {
                 return deviceId;
             }
 
-            public PortNumber getInPort() {
+            PortNumber getInPort() {
                 return inPort;
             }
 
-            public PortNumber getOutPort() {
+            PortNumber getOutPort() {
                 return outPort;
             }
 
