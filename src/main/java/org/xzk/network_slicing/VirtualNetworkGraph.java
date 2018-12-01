@@ -43,7 +43,7 @@ public class VirtualNetworkGraph {
 
         while (!queue.isEmpty()) {
             DeviceId currentDevice = queue.poll();
-            LinkedList<DeviceId> adjList = this.adj.get(currentDevice);
+            LinkedList<DeviceId> adjList = this.adj.get(currentDevice) == null ? new LinkedList<>() : this.adj.get(currentDevice);
 
             for (DeviceId deviceId : adjList) {
                 if (!visited.containsKey(deviceId)) {
@@ -57,6 +57,11 @@ public class VirtualNetworkGraph {
                     }
                 }
             }
+        }
+
+        // If impossible to start bfs
+        if (!pathStack.contains(sourceDeviceId) || !pathStack.contains(destinationDeviceId)){
+            return shortestPathList;
         }
 
         DeviceId node;

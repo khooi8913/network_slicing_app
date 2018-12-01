@@ -572,7 +572,9 @@ public class AppComponent {
             int numberOfVertices = virtualDevices.size();
             VirtualNetworkGraph virtualNetworkGraph = new VirtualNetworkGraph(numberOfVertices);
             for (VirtualLink virtualLink : virtualLinks) {
-                virtualNetworkGraph.addEdge(virtualLink.src().deviceId(), virtualLink.dst().deviceId());
+                if(virtualLink.state().equals(VirtualLink.State.ACTIVE)){
+                    virtualNetworkGraph.addEdge(virtualLink.src().deviceId(), virtualLink.dst().deviceId());
+                }
             }
 
             // If it's A->B->C, it will return C, B, A. Order is reversed
@@ -589,9 +591,11 @@ public class AppComponent {
 
             for (int i = 0; i < deviceIds.size() - 1; i++) {
                 for (VirtualLink virtualLink : virtualLinks) {
-                    if (virtualLink.src().deviceId().equals(deviceIds.get(i)) &&
-                            virtualLink.dst().deviceId().equals(deviceIds.get(i + 1))) {
-                        links.add(virtualLink);
+                    if(virtualLink.state().equals(VirtualLink.State.ACTIVE)){
+                        if (virtualLink.src().deviceId().equals(deviceIds.get(i)) &&
+                                virtualLink.dst().deviceId().equals(deviceIds.get(i + 1))) {
+                            links.add(virtualLink);
+                        }
                     }
                 }
             }
