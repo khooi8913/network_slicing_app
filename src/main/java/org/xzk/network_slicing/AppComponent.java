@@ -60,11 +60,15 @@ public class AppComponent {
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected EdgePortService edgePortService;
 
-    // TenantId/ NetworkId <-> IpNetworks/ Gateway
+    // TenantId/ NetworkId <---> IpNetworks/ Gateway
     private final byte[] gatewayMac = {00, 01, 02, 03, 04, 05};
     private final int DEFAULT_PRIORITY = 100;
     public static HashMap<NetworkId, RoutedNetworks> tenantRoutedNetworks;
     public static HashMap<NetworkId, InstalledFlowRules> tenantFlowRules;
+
+    // MplsTables
+    public static HashMap<DeviceId, MplsLabelPool> mplsLabelPool = new HashMap<>();
+    public static HashMap<DeviceId, MplsForwardingTable> mplsForwardingTable = new HashMap<>();
 
     @Activate
     protected void activate() {
@@ -103,9 +107,6 @@ public class AppComponent {
 
     private class VirtualNetworkPacketProcessor implements PacketProcessor {
 
-        private HashMap<DeviceId, MplsLabelPool> mplsLabelPool = new HashMap<>();
-        private HashMap<DeviceId, MplsForwardingTable> mplsForwardingTable = new HashMap<>();
-
         @Override
         public void process(PacketContext packetContext) {
             // Stop processing if the packet has already been handled.
@@ -134,9 +135,6 @@ public class AppComponent {
             );
             if (sourceHost == null) return;
 
-            TrafficSelector.Builder selector;
-            TrafficTreatment.Builder treatment;
-
             switch (EthType.EtherType.lookup(ethernetPacket.getEtherType())) {
                 case ARP:
                     log.info("ARP packet received");
@@ -155,6 +153,7 @@ public class AppComponent {
                     Ip4Address destinationIpAddress = Ip4Address.valueOf(arpPacket.getTargetProtocolAddress());
                     Ethernet ethernet = ARP.buildArpReply(destinationIpAddress, destinationMacAddress, ethernetPacket);
 
+                    TrafficTreatment.Builder treatment;
                     treatment = DefaultTrafficTreatment.builder();
                     treatment.setOutput(inboundPacket.receivedFrom().port());
                     packetService.emit(new DefaultOutboundPacket(
@@ -169,193 +168,24 @@ public class AppComponent {
                     log.info("IPv4 packet received!");
 
                     // If the destination MAC is headed to the gateway, which means to different network
-                    boolean isToBeRouted = isToBeRouted(ethernetPacket.getDestinationMAC());
+                    MacAddress destinationMac = ethernetPacket.getDestinationMAC();
+                    boolean isToBeRouted = isToBeRouted(destinationMac);
                     VirtualHost destinationHost = getDestinationHost(isToBeRouted, ethernetPacket, currentNetworkId);
 
-                    // What if headed to external network?
+                    // TODO: What if headed to external network?
                     if (destinationHost == null) {
                         log.info("Destination host does not exist!");
                         return;
                     }
 
                     if (isHostOnSameDevice(sourceHost, destinationHost)) {
-                        selector = DefaultTrafficSelector.builder();
-                        treatment = DefaultTrafficTreatment.builder();
 
-                        IPv4 ipPacket = (IPv4) ethernetPacket.getPayload();
-                        Ip4Prefix ip4DstPrefix = Ip4Prefix.valueOf(
-                                ipPacket.getDestinationAddress(),
-                                Ip4Prefix.MAX_MASK_LENGTH
-                        );
-
-                        PortNumber inPort = sourceHost.location().port();
-                        PortNumber outPort = destinationHost.location().port();
-
-                        DeviceId currentDeviceId = sourceHost.location().deviceId();
-
-                        selector.matchInPort(inPort);
-                        selector.matchEthType(Ethernet.TYPE_IPV4);
-                        selector.matchIPDst(ip4DstPrefix);
-
-                        if (isToBeRouted) {
-                            treatment.setEthDst(destinationHost.mac());
-                        }
-                        treatment.setOutput(outPort);
-
-                        // Build & send forwarding objective
-                        sendFlowObjective(currentDeviceId, selector, treatment);
-                        log.info("Flow objective sent to device!");
-
-                        // Forward out current packet
-                        packetOut(packetContext, outPort);
-                        log.info("Packet out!");
-
-                        // Store FlowRule
-                        IpAddress src = IpAddress.valueOf(ipPacket.getSourceAddress());
-                        IpAddress dst = IpAddress.valueOf(ipPacket.getDestinationAddress());
-                        storeFlowRule(src, dst, selector, treatment, currentDeviceId, currentNetworkId);
+                        forwardToSameDevice(packetContext, sourceHost, destinationHost, isToBeRouted, currentNetworkId);
 
                     } else {
-                        // Path computation here
-                        log.info("Path Computation");
 
-                        ArrayList<DeviceId> pathNodes = getForwardPathIfPossible(
-                                currentNetworkId,
-                                sourceHost,
-                                destinationHost
-                        );
-                        Collections.reverse(pathNodes);
+                        forwardToDiffDevice(packetContext, sourceHost, destinationHost, isToBeRouted, currentNetworkId);
 
-                        for (DeviceId deviceId : pathNodes) log.info(deviceId.toString());
-
-                        if (pathNodes.isEmpty()) {
-                            log.info("Unable to find valid path!");
-                            return;
-                        }
-
-                        List<Link> pathLinks = getForwardPathLinks(currentNetworkId, pathNodes);
-                        for (Link link : pathLinks) log.info(link.src().toString() + " " + link.dst().toString());
-
-                        if (pathLinks.isEmpty()) {
-                            log.info("Unable to find valid path!");
-                            return;
-                        }
-
-                        List<InOutPort> inOutPorts = extractInOutPorts(pathLinks, sourceHost, destinationHost);
-
-                        log.info("Distributing labels!");
-
-                        // Initialize MplsLabelPool
-                        initializeMplsLabelPool(inOutPorts);
-                        initializeMplsForwardingTables(inOutPorts);
-
-                        // Distribute labels and build path
-                        MplsLabel currentLabel;
-                        MplsLabel previousLabel = null;
-
-                        // Extract Destination IP
-                        IPv4 ipPacket = (IPv4) ethernetPacket.getPayload();
-                        Ip4Prefix ip4DstPrefix = Ip4Prefix.valueOf(
-                                ipPacket.getDestinationAddress(),
-                                Ip4Prefix.MAX_MASK_LENGTH
-                        );
-
-
-                        IpAddress src = IpAddress.valueOf(ipPacket.getSourceAddress());
-                        IpAddress dst = IpAddress.valueOf(ipPacket.getDestinationAddress());
-
-                        for (int i = inOutPorts.size() - 1; i >= 0; i--) {
-                            selector = DefaultTrafficSelector.builder();
-                            treatment = DefaultTrafficTreatment.builder();
-
-                            log.info(inOutPorts.get(i).toString());
-
-                            PortNumber inPort = inOutPorts.get(i).getInPort();
-                            PortNumber outPort = inOutPorts.get(i).getOutPort();
-                            DeviceId currentDeviceId = inOutPorts.get(i).getDeviceId();
-
-                            if (currentDeviceId.equals(destinationHost.location().deviceId())) {   // Terminating Switch
-                                log.info("Flow installing for terminating switch");
-                                if (mplsForwardingTable.get(currentDeviceId).getMplsLabel(
-                                        currentNetworkId, destinationHost.id()) == null) {
-
-                                    currentLabel = MplsLabel.mplsLabel(mplsLabelPool
-                                            .get(currentDeviceId)
-                                            .getNextLabel()
-                                    );
-                                } else {
-                                    currentLabel = mplsForwardingTable.get(currentDeviceId).getMplsLabel(
-                                            currentNetworkId, destinationHost.id());
-
-                                    mplsForwardingTable.get(currentDeviceId).addLabelToHost(
-                                            currentNetworkId, destinationHost.id(), currentLabel
-                                    );
-                                }
-
-                                selector.matchInPort(inPort);
-                                selector.matchEthType(Ethernet.MPLS_UNICAST);
-                                selector.matchMplsBos(true);
-                                selector.matchMplsLabel(currentLabel);
-
-                                treatment.popMpls(new EthType(Ethernet.TYPE_IPV4));
-                                treatment.setOutput(outPort);
-
-                                previousLabel = currentLabel;
-                            } else if (currentDeviceId.equals(sourceHost.location().deviceId())) {
-                                // Originating Switch
-                                log.info("Flow installing for originating switch");
-                                mplsForwardingTable.get(currentDeviceId).addLabelToHost(
-                                        currentNetworkId, destinationHost.id(), previousLabel
-                                );
-
-                                selector.matchInPort(inPort);
-                                selector.matchIPDst(ip4DstPrefix);
-                                selector.matchEthType(Ethernet.TYPE_IPV4);
-
-                                if (isToBeRouted) {
-                                    treatment.setEthDst(destinationHost.mac());
-                                }
-                                treatment.pushMpls();
-                                treatment.setMpls(previousLabel);
-                                treatment.setOutput(outPort);
-                            } else {
-                                // LSRs
-                                log.info("Flow installing for LSRs");
-                                if (mplsForwardingTable.get(currentDeviceId).getMplsLabel(
-                                        currentNetworkId, destinationHost.id()) == null) {
-                                    currentLabel = MplsLabel.mplsLabel(mplsLabelPool
-                                            .get(currentDeviceId)
-                                            .getNextLabel()
-                                    );
-                                } else {
-                                    currentLabel = mplsForwardingTable.get(currentDeviceId).getMplsLabel(
-                                            currentNetworkId, destinationHost.id());
-                                    mplsForwardingTable.get(currentDeviceId).addLabelToHost(
-                                            currentNetworkId, destinationHost.id(), currentLabel
-                                    );
-                                }
-
-                                selector.matchInPort(inPort);
-                                selector.matchMplsLabel(currentLabel);
-                                selector.matchEthType(Ethernet.MPLS_UNICAST);
-
-                                treatment.setMpls(previousLabel);
-                                treatment.setOutput(outPort);
-
-                                previousLabel = currentLabel;
-                            }
-
-                            // Build & send forwarding objective
-                            sendFlowObjective(currentDeviceId, selector, treatment);
-                            log.info("Flow objective sent to device!" + currentDeviceId.toString());
-
-                            // Store FlowRule
-                            storeFlowRule(src, dst, selector, treatment, currentDeviceId, currentNetworkId);
-                        }
-
-                        // Forward out current packet
-                        packetOut(packetContext, inOutPorts.get(0).outPort);
-                        log.info("Packet out!");
                     }
                     break;
             }
@@ -547,6 +377,188 @@ public class AppComponent {
             return destinationMAC.equals(new MacAddress(gatewayMac));
         }
 
+        private void forwardToSameDevice(PacketContext packetContext, VirtualHost sourceHost, VirtualHost destinationHost, boolean isToBeRouted, NetworkId currentNetworkId) {
+            TrafficSelector.Builder selector = DefaultTrafficSelector.builder();
+            TrafficTreatment.Builder treatment = DefaultTrafficTreatment.builder();
+
+            Ethernet ethernetPacket = packetContext.inPacket().parsed();
+            IPv4 ipPacket = (IPv4) ethernetPacket.getPayload();
+            Ip4Prefix ip4DstPrefix = Ip4Prefix.valueOf(
+                    ipPacket.getDestinationAddress(),
+                    Ip4Prefix.MAX_MASK_LENGTH
+            );
+
+            PortNumber inPort = sourceHost.location().port();
+            PortNumber outPort = destinationHost.location().port();
+
+            DeviceId currentDeviceId = sourceHost.location().deviceId();
+
+            selector.matchInPort(inPort);
+            selector.matchEthType(Ethernet.TYPE_IPV4);
+            selector.matchIPDst(ip4DstPrefix);
+
+            if (isToBeRouted) treatment.setEthDst(destinationHost.mac());
+            treatment.setOutput(outPort);
+
+            // Build & send forwarding objective
+            sendFlowObjective(currentDeviceId, selector, treatment);
+            log.info("Flow objective sent to device!");
+
+            // Forward out current packet
+            packetOut(packetContext, outPort);
+            log.info("Packet out!");
+
+            // Store FlowRule
+            IpAddress src = IpAddress.valueOf(ipPacket.getSourceAddress());
+            IpAddress dst = IpAddress.valueOf(ipPacket.getDestinationAddress());
+            storeFlowRule(src, dst, selector, treatment, currentDeviceId, currentNetworkId);
+        }
+
+        private void forwardToDiffDevice(PacketContext packetContext, VirtualHost sourceHost, VirtualHost destinationHost, boolean isToBeRouted, NetworkId currentNetworkId) {
+            TrafficSelector.Builder selector;
+            TrafficTreatment.Builder treatment;
+
+            // Path computation here
+            log.info("Path Computation");
+            ArrayList<DeviceId> pathNodes = getForwardPathIfPossible(
+                    currentNetworkId,
+                    sourceHost,
+                    destinationHost
+            );
+            Collections.reverse(pathNodes);
+
+            // Display path
+            for (DeviceId deviceId : pathNodes) log.info(deviceId.toString());
+            if (pathNodes.isEmpty()) {
+                log.info("Unable to find valid path!");
+                return;
+            }
+
+            List<Link> pathLinks = getForwardPathLinks(currentNetworkId, pathNodes);
+            for (Link link : pathLinks) log.info(link.src().toString() + " " + link.dst().toString());
+
+            if (pathLinks.isEmpty()) {
+                log.info("Unable to find valid path!");
+                return;
+            }
+
+            List<InOutPort> inOutPorts = extractInOutPorts(pathLinks, sourceHost, destinationHost);
+
+            log.info("Distributing labels!");
+
+            // Initialize MplsLabelPool
+            initializeMplsLabelPool(inOutPorts);
+            initializeMplsForwardingTables(inOutPorts);
+
+            // Distribute labels and build path
+            MplsLabel currentLabel;
+            MplsLabel previousLabel = null;
+
+            // Extract Destination IP
+            Ethernet ethernetPacket = packetContext.inPacket().parsed();
+            IPv4 ipPacket = (IPv4) ethernetPacket.getPayload();
+            Ip4Prefix ip4DstPrefix = Ip4Prefix.valueOf(
+                    ipPacket.getDestinationAddress(),
+                    Ip4Prefix.MAX_MASK_LENGTH
+            );
+
+            IpAddress src = IpAddress.valueOf(ipPacket.getSourceAddress());
+            IpAddress dst = IpAddress.valueOf(ipPacket.getDestinationAddress());
+
+            for (int i = inOutPorts.size() - 1; i >= 0; i--) {
+                selector = DefaultTrafficSelector.builder();
+                treatment = DefaultTrafficTreatment.builder();
+
+                log.info(inOutPorts.get(i).toString());
+
+                PortNumber inPort = inOutPorts.get(i).getInPort();
+                PortNumber outPort = inOutPorts.get(i).getOutPort();
+                DeviceId currentDeviceId = inOutPorts.get(i).getDeviceId();
+
+                if (currentDeviceId.equals(destinationHost.location().deviceId())) {   // Terminating Switch
+                    log.info("Flow installing for terminating switch");
+                    if (mplsForwardingTable.get(currentDeviceId).getMplsLabel(
+                            currentNetworkId, destinationHost.id()) == null) {
+
+                        currentLabel = MplsLabel.mplsLabel(mplsLabelPool
+                                .get(currentDeviceId)
+                                .getNextLabel()
+                        );
+                    } else {
+                        currentLabel = mplsForwardingTable.get(currentDeviceId).getMplsLabel(
+                                currentNetworkId, destinationHost.id());
+
+                        mplsForwardingTable.get(currentDeviceId).addLabelToHost(
+                                currentNetworkId, destinationHost.id(), currentLabel
+                        );
+                    }
+
+                    selector.matchInPort(inPort);
+                    selector.matchEthType(Ethernet.MPLS_UNICAST);
+                    selector.matchMplsBos(true);
+                    selector.matchMplsLabel(currentLabel);
+
+                    treatment.popMpls(new EthType(Ethernet.TYPE_IPV4));
+                    treatment.setOutput(outPort);
+
+                    previousLabel = currentLabel;
+                } else if (currentDeviceId.equals(sourceHost.location().deviceId())) {
+                    // Originating Switch
+                    log.info("Flow installing for originating switch");
+                    mplsForwardingTable.get(currentDeviceId).addLabelToHost(
+                            currentNetworkId, destinationHost.id(), previousLabel
+                    );
+
+                    selector.matchInPort(inPort);
+                    selector.matchIPDst(ip4DstPrefix);
+                    selector.matchEthType(Ethernet.TYPE_IPV4);
+
+                    if (isToBeRouted) {
+                        treatment.setEthDst(destinationHost.mac());
+                    }
+                    treatment.pushMpls();
+                    treatment.setMpls(previousLabel);
+                    treatment.setOutput(outPort);
+                } else {
+                    // LSRs
+                    log.info("Flow installing for LSRs");
+                    if (mplsForwardingTable.get(currentDeviceId).getMplsLabel(
+                            currentNetworkId, destinationHost.id()) == null) {
+                        currentLabel = MplsLabel.mplsLabel(mplsLabelPool
+                                .get(currentDeviceId)
+                                .getNextLabel()
+                        );
+                    } else {
+                        currentLabel = mplsForwardingTable.get(currentDeviceId).getMplsLabel(
+                                currentNetworkId, destinationHost.id());
+                        mplsForwardingTable.get(currentDeviceId).addLabelToHost(
+                                currentNetworkId, destinationHost.id(), currentLabel
+                        );
+                    }
+
+                    selector.matchInPort(inPort);
+                    selector.matchMplsLabel(currentLabel);
+                    selector.matchEthType(Ethernet.MPLS_UNICAST);
+
+                    treatment.setMpls(previousLabel);
+                    treatment.setOutput(outPort);
+
+                    previousLabel = currentLabel;
+                }
+
+                // Build & send forwarding objective
+                sendFlowObjective(currentDeviceId, selector, treatment);
+                log.info("Flow objective sent to device!" + currentDeviceId.toString());
+
+                // Store FlowRule
+                storeFlowRule(src, dst, selector, treatment, currentDeviceId, currentNetworkId);
+            }
+
+            // Forward out current packet
+            packetOut(packetContext, inOutPorts.get(0).outPort);
+            log.info("Packet out!");
+        }
+
         // Custom implementation of path computation
         private ArrayList<DeviceId> getForwardPathIfPossible(NetworkId networkId, VirtualHost sourceHost, VirtualHost destinationHost) {
 
@@ -567,8 +579,8 @@ public class AppComponent {
             return virtualNetworkGraph.bfsForShortestPath(sourceHost.location().deviceId(),
                     destinationHost.location().deviceId());
         }
-
         // Get Links in the path
+
         private List<Link> getForwardPathLinks(NetworkId networkId, ArrayList<DeviceId> deviceIds) {
             List<Link> links = new LinkedList<>();
 
@@ -632,7 +644,7 @@ public class AppComponent {
             }
         }
 
-        private void sendFlowObjective(DeviceId deviceId, TrafficSelector.Builder selector, TrafficTreatment.Builder treatment){
+        private void sendFlowObjective(DeviceId deviceId, TrafficSelector.Builder selector, TrafficTreatment.Builder treatment) {
             ForwardingObjective forwardingObjective = DefaultForwardingObjective.builder()
                     .withSelector(selector.build())
                     .withTreatment(treatment.build())
@@ -642,8 +654,8 @@ public class AppComponent {
                     .add();
             flowObjectiveService.forward(deviceId, forwardingObjective);
         }
-
         // Sends a packet out the specified port.
+
         private void packetOut(PacketContext packetContext, PortNumber portNumber) {
             packetContext.treatmentBuilder().setOutput(portNumber);
             packetContext.send();
@@ -658,7 +670,7 @@ public class AppComponent {
                     .fromApp(appId)
                     .forDevice(deviceId)
                     .build();
-            if(!tenantFlowRules.containsKey(networkId)){
+            if (!tenantFlowRules.containsKey(networkId)) {
                 tenantFlowRules.put(networkId, new InstalledFlowRules());
             }
             tenantFlowRules.get(networkId).addFlowRule(src, dst, flowRule);

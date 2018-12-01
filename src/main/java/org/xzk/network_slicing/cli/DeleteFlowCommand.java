@@ -34,6 +34,7 @@ public class DeleteFlowCommand extends AbstractShellCommand {
         IpAddress src = IpAddress.valueOf(srcIp);
         IpAddress dst = IpAddress.valueOf(dstIp);
 
+        // TODO: Return the deleted flow rule's MPLS labels
         ArrayList<FlowRule> installedFlowRules = AppComponent.tenantFlowRules.get(netId).getFlowRules(src, dst);
         if (installedFlowRules != null) {
             for(FlowRule f : installedFlowRules) {
