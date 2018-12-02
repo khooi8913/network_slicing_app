@@ -33,4 +33,8 @@ public class InstalledFlowRules {
         }
     }
 
+    public HashMap<IpAddress, HashMap<IpAddress, ArrayList<FlowRule>>> getAllFlowRules(){
+        return installedFlowRules;
+    }
+
 }

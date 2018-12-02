@@ -19,6 +19,7 @@ import org.apache.felix.scr.annotations.*;
 import org.onlab.packet.*;
 import org.onosproject.core.ApplicationId;
 import org.onosproject.core.CoreService;
+import org.onosproject.event.Event;
 import org.onosproject.incubator.net.virtual.*;
 import org.onosproject.net.*;
 import org.onosproject.net.edge.EdgePortService;
@@ -27,6 +28,9 @@ import org.onosproject.net.flowobjective.DefaultForwardingObjective;
 import org.onosproject.net.flowobjective.FlowObjectiveService;
 import org.onosproject.net.flowobjective.ForwardingObjective;
 import org.onosproject.net.packet.*;
+import org.onosproject.net.topology.TopologyEvent;
+import org.onosproject.net.topology.TopologyListener;
+import org.onosproject.net.topology.TopologyService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,12 +45,16 @@ public class AppComponent {
 
     private ApplicationId appId;
     private VirtualNetworkPacketProcessor virtualNetworkPacketProcessor = new VirtualNetworkPacketProcessor();
+    private VirtualNetworkTopologyListener virtualNetworkTopologyListener = new VirtualNetworkTopologyListener();
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected CoreService coreService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected PacketService packetService;
+
+    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
+    protected TopologyService topologyService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected FlowRuleService flowRuleService;
@@ -75,6 +83,7 @@ public class AppComponent {
         appId = coreService.registerApplication("org.xzk.network_slicing");
         requestIntercepts();
         packetService.addProcessor(virtualNetworkPacketProcessor, PacketProcessor.director(2));
+        topologyService.addListener(virtualNetworkTopologyListener);
         tenantRoutedNetworks = new HashMap<>();
         tenantFlowRules = new HashMap<>();
         log.info("Started");
@@ -101,6 +110,7 @@ public class AppComponent {
         withdrawIntercepts();
         flowRuleService.removeFlowRulesById(appId);
         virtualNetworkPacketProcessor = null;
+        virtualNetworkTopologyListener = null;
         tenantRoutedNetworks = null;
         log.info("Stopped");
     }
@@ -710,6 +720,67 @@ public class AppComponent {
                         ", inPort=" + inPort.toString() +
                         ", outPort=" + outPort.toString() +
                         '}';
+            }
+        }
+    }
+
+    private class VirtualNetworkTopologyListener implements TopologyListener {
+
+        @Override
+        public void event(TopologyEvent topologyEvent) {
+
+            Set<DeviceId> affectedDevices = new HashSet<>();
+
+            log.info(topologyEvent.toString());
+            log.info("event size: " + topologyEvent.reasons().size());
+
+            for(Event e : topologyEvent.reasons()){
+//                log.info(e.toString());
+
+                log.info(e.subject().toString()); // returns DefaultLink
+                DefaultLink a =  (DefaultLink) e.subject();
+                affectedDevices.add(a.src().deviceId());
+                affectedDevices.add(a.dst().deviceId());
+            }
+
+            log.info("Affected devices: " );
+            for(DeviceId d : affectedDevices) {
+                log.info(d.toString());
+            }
+
+            HashMap<IpAddress, IpAddress> toBeDeleted = new HashMap<>();
+
+            // Iterate through all the FlowRules for all networks
+            for(Map.Entry<NetworkId, InstalledFlowRules> a : tenantFlowRules.entrySet()){
+                InstalledFlowRules flowRules = a.getValue();
+
+                for(Map.Entry<IpAddress, HashMap<IpAddress, ArrayList<FlowRule>>> b : flowRules.getAllFlowRules().entrySet()){
+                    IpAddress srcIp = b.getKey();
+
+                    Set<DeviceId> devices = new HashSet<>();
+
+                    for(Map.Entry<IpAddress, ArrayList<FlowRule>> c : b.getValue().entrySet()){
+                       IpAddress dstIp = c.getKey();
+
+                       // Look for affected devices
+                       for(FlowRule d : c.getValue()){
+                            DeviceId currentDeviceId = d.deviceId();
+                            devices.add(currentDeviceId);
+                       }
+
+                       if(devices.containsAll(affectedDevices)){
+                           // Mark this flow rule to be deleted
+                           toBeDeleted.put(srcIp, dstIp);
+                           toBeDeleted.put(dstIp, srcIp);
+                       }
+                    }
+                }
+
+                // Delete flow rules
+                for(Map.Entry<IpAddress, IpAddress> x : toBeDeleted.entrySet()){
+                    a.getValue().deleteFlowRules(x.getKey(), x.getValue());
+                }
+                toBeDeleted = new HashMap<>();
             }
         }
     }
