@@ -8,8 +8,11 @@ import org.onosproject.incubator.net.virtual.NetworkId;
 import org.onosproject.net.flow.FlowRule;
 import org.onosproject.net.flow.FlowRuleService;
 import org.xzk.network_slicing.AppComponent;
+import org.xzk.network_slicing.FlowPair;
+import org.xzk.network_slicing.FlowRuleInformation;
 
 import java.util.ArrayList;
+import java.util.List;
 
 @Command(scope = "onos", name = "ns-delete-flow",
         description = "Deletes flow given source and destination")
@@ -34,14 +37,22 @@ public class DeleteFlowCommand extends AbstractShellCommand {
         IpAddress src = IpAddress.valueOf(srcIp);
         IpAddress dst = IpAddress.valueOf(dstIp);
 
-        // TODO: Return the deleted flow rule's MPLS labels
-        ArrayList<FlowRule> installedFlowRules = AppComponent.tenantFlowRules.get(netId).getFlowRules(src, dst);
-        if (installedFlowRules != null) {
-            for(FlowRule f : installedFlowRules) {
-                flowRuleService.removeFlowRules(f);
-            }
+        FlowPair flowPair = new FlowPair(src, dst);
+        List<FlowRuleInformation> flowRules = AppComponent.flowRuleStorage.getFlowRules(netId, flowPair);
+        for(FlowRuleInformation f : flowRules) {
+            flowRuleService.removeFlowRules(f.getFlowRule());
         }
-        AppComponent.tenantFlowRules.get(netId).deleteFlowRules(src, dst);
+
+        AppComponent.flowRuleStorage.deleteFlowRules(netId, flowPair);
+
+//        // TODO: Return the deleted flow rule's MPLS labels
+//        ArrayList<FlowRule> installedFlowRules = AppComponent.tenantFlowRules.get(netId).getFlowRules(src, dst);
+//        if (installedFlowRules != null) {
+//            for(FlowRule f : installedFlowRules) {
+//                flowRuleService.removeFlowRules(f);
+//            }
+//        }
+//        AppComponent.tenantFlowRules.get(netId).deleteFlowRules(src, dst);
         print("Flow successfully removed!");
     }
 }

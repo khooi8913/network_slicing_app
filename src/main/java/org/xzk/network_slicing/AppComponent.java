@@ -71,8 +71,13 @@ public class AppComponent {
     // TenantId/ NetworkId <---> IpNetworks/ Gateway
     private final byte[] gatewayMac = {00, 01, 02, 03, 04, 05};
     private final int DEFAULT_PRIORITY = 100;
+
+    // Tenant Info
     public static HashMap<NetworkId, RoutedNetworks> tenantRoutedNetworks;
     public static HashMap<NetworkId, InstalledFlowRules> tenantFlowRules;
+
+    // NEW
+    public static FlowRuleStorage flowRuleStorage = new FlowRuleStorage();
 
     // MplsTables
     public static HashMap<DeviceId, MplsLabelPool> mplsLabelPool = new HashMap<>();
@@ -421,7 +426,10 @@ public class AppComponent {
             // Store FlowRule
             IpAddress src = IpAddress.valueOf(ipPacket.getSourceAddress());
             IpAddress dst = IpAddress.valueOf(ipPacket.getDestinationAddress());
-            storeFlowRule(src, dst, selector, treatment, currentDeviceId, currentNetworkId);
+
+            FlowPair flowPair = new FlowPair(src, dst);
+//            storeFlowRule(src, dst, selector, treatment, currentDeviceId, currentNetworkId);
+            storeFlowRule(flowPair, selector, treatment, null, currentDeviceId, currentNetworkId);
         }
 
         private void forwardToDiffDevice(PacketContext packetContext, VirtualHost sourceHost, VirtualHost destinationHost, boolean isToBeRouted, NetworkId currentNetworkId) {
@@ -461,7 +469,7 @@ public class AppComponent {
             initializeMplsForwardingTables(inOutPorts);
 
             // Distribute labels and build path
-            MplsLabel currentLabel;
+            MplsLabel currentLabel = null;
             MplsLabel previousLabel = null;
 
             // Extract Destination IP
@@ -474,6 +482,8 @@ public class AppComponent {
 
             IpAddress src = IpAddress.valueOf(ipPacket.getSourceAddress());
             IpAddress dst = IpAddress.valueOf(ipPacket.getDestinationAddress());
+
+            FlowPair flowPair = new FlowPair(src, dst);
 
             for (int i = inOutPorts.size() - 1; i >= 0; i--) {
                 selector = DefaultTrafficSelector.builder();
@@ -561,7 +571,11 @@ public class AppComponent {
                 log.info("Flow objective sent to device!" + currentDeviceId.toString());
 
                 // Store FlowRule
-                storeFlowRule(src, dst, selector, treatment, currentDeviceId, currentNetworkId);
+//                storeFlowRule(src, dst, selector, treatment, currentDeviceId, currentNetworkId);
+
+                // NEW
+                // TODO: Temporarily not storing any MPLS Labels yet....
+                storeFlowRule(flowPair, selector, treatment, null, currentDeviceId, currentNetworkId);
             }
 
             // Forward out current packet
@@ -690,6 +704,19 @@ public class AppComponent {
             tenantFlowRules.get(networkId).addFlowRule(src, dst, flowRule);
         }
 
+        // New FlowRuleStorageMechanism
+        private void storeFlowRule(FlowPair flowPair, TrafficSelector.Builder selector, TrafficTreatment.Builder treatment, MplsLabel mplsLabel, DeviceId deviceId, NetworkId networkId) {
+            FlowRule flowRule = DefaultFlowRule.builder()
+                    .withSelector(selector.build())
+                    .withTreatment(treatment.build())
+                    .withPriority(DEFAULT_PRIORITY)
+                    .withHardTimeout(FlowRule.MAX_TIMEOUT)
+                    .fromApp(appId)
+                    .forDevice(deviceId)
+                    .build();
+            flowRuleStorage.addFlowRule(networkId, flowPair, flowRule, mplsLabel);
+        }
+
         class InOutPort {
             private DeviceId deviceId;
             private PortNumber inPort;
@@ -736,52 +763,87 @@ public class AppComponent {
 
             for(Event e : topologyEvent.reasons()){
 //                log.info(e.toString());
-
                 log.info(e.subject().toString()); // returns DefaultLink
                 DefaultLink a =  (DefaultLink) e.subject();
                 affectedDevices.add(a.src().deviceId());
                 affectedDevices.add(a.dst().deviceId());
             }
 
+
             log.info("Affected devices: " );
             for(DeviceId d : affectedDevices) {
                 log.info(d.toString());
             }
 
-            HashMap<IpAddress, IpAddress> toBeDeleted = new HashMap<>();
+            Set<DeviceId> devicesInFlow = new HashSet<>();
+            Set<FlowPair> toBeDeleted = new HashSet<>();
 
-            // Iterate through all the FlowRules for all networks
-            for(Map.Entry<NetworkId, InstalledFlowRules> a : tenantFlowRules.entrySet()){
-                InstalledFlowRules flowRules = a.getValue();
+            HashMap<NetworkId, HashMap<FlowPair, List<FlowRuleInformation>>> allFlows = AppComponent.flowRuleStorage.getAllFlows();
+            for(Map.Entry<NetworkId, HashMap<FlowPair, List<FlowRuleInformation>>> a : allFlows.entrySet()) {
 
-                for(Map.Entry<IpAddress, HashMap<IpAddress, ArrayList<FlowRule>>> b : flowRules.getAllFlowRules().entrySet()){
-                    IpAddress srcIp = b.getKey();
+                for(Map.Entry<FlowPair, List<FlowRuleInformation>> b : a.getValue().entrySet()) {
 
-                    Set<DeviceId> devices = new HashSet<>();
-
-                    for(Map.Entry<IpAddress, ArrayList<FlowRule>> c : b.getValue().entrySet()){
-                       IpAddress dstIp = c.getKey();
-
-                       // Look for affected devices
-                       for(FlowRule d : c.getValue()){
-                            DeviceId currentDeviceId = d.deviceId();
-                            devices.add(currentDeviceId);
-                       }
-
-                       if(devices.containsAll(affectedDevices)){
-                           // Mark this flow rule to be deleted
-                           toBeDeleted.put(srcIp, dstIp);
-                           toBeDeleted.put(dstIp, srcIp);
-                       }
+                    List<FlowRuleInformation> flowRulesList = b.getValue();
+                    // Iterate over all flow rule to extract device ID
+                    for(FlowRuleInformation f : flowRulesList) {
+                        devicesInFlow.add(f.getFlowRuleDeviceId());
                     }
-                }
 
-                // Delete flow rules
-                for(Map.Entry<IpAddress, IpAddress> x : toBeDeleted.entrySet()){
-                    a.getValue().deleteFlowRules(x.getKey(), x.getValue());
+                    // Check whether it is affected by the topology change
+                    if(devicesInFlow.containsAll(affectedDevices)) {
+                        // Mark as to be deleted
+                        toBeDeleted.add(b.getKey());
+                    }
+
+                    // Clear and check for next flow rule
+                    devicesInFlow.clear();
                 }
-                toBeDeleted = new HashMap<>();
+                for(FlowPair f : toBeDeleted) {
+                    // retract all flow rules from devices
+                    List<FlowRuleInformation> flowRuleInformations = AppComponent.flowRuleStorage.getFlowRules(a.getKey(), f);
+                    for(FlowRuleInformation g : flowRuleInformations) {
+                        flowRuleService.removeFlowRules(g.getFlowRule());
+                    }
+
+                    // delete flowrule storage
+                    AppComponent.flowRuleStorage.deleteFlowRules(a.getKey(), f);
+                }
+                toBeDeleted = new HashSet<>();
             }
+
+//            HashMap<IpAddress, IpAddress> toBeDeleted = new HashMap<>();
+//            // Iterate through all the FlowRules for all networks
+//            for(Map.Entry<NetworkId, InstalledFlowRules> a : tenantFlowRules.entrySet()){
+//                InstalledFlowRules flowRules = a.getValue();
+//
+//                for(Map.Entry<IpAddress, HashMap<IpAddress, ArrayList<FlowRule>>> b : flowRules.getAllFlowRules().entrySet()){
+//                    IpAddress srcIp = b.getKey();
+//
+//                    Set<DeviceId> devices = new HashSet<>();
+//
+//                    for(Map.Entry<IpAddress, ArrayList<FlowRule>> c : b.getValue().entrySet()){
+//                       IpAddress dstIp = c.getKey();
+//
+//                       // Look for affected devices
+//                       for(FlowRule d : c.getValue()){
+//                            DeviceId currentDeviceId = d.deviceId();
+//                            devices.add(currentDeviceId);
+//                       }
+//
+//                       if(devices.containsAll(affectedDevices)){
+//                           // Mark this flow rule to be deleted
+//                           toBeDeleted.put(srcIp, dstIp);
+//                           toBeDeleted.put(dstIp, srcIp);
+//                       }
+//                    }
+//                }
+//
+//                // Delete flow rules
+//                for(Map.Entry<IpAddress, IpAddress> x : toBeDeleted.entrySet()){
+//                    a.getValue().deleteFlowRules(x.getKey(), x.getValue());
+//                }
+//                toBeDeleted = new HashMap<>();
+//            }
         }
     }
 }
