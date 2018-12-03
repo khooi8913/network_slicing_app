@@ -522,6 +522,8 @@ public class AppComponent {
                     treatment.setOutput(outPort);
 
                     previousLabel = currentLabel;
+
+                    storeFlowRule(flowPair, selector, treatment, currentLabel, currentDeviceId, currentNetworkId);
                 } else if (currentDeviceId.equals(sourceHost.location().deviceId())) {
                     // Originating Switch
                     log.info("Flow installing for originating switch");
@@ -539,6 +541,8 @@ public class AppComponent {
                     treatment.pushMpls();
                     treatment.setMpls(previousLabel);
                     treatment.setOutput(outPort);
+
+                    storeFlowRule(flowPair, selector, treatment, null, currentDeviceId, currentNetworkId);
                 } else {
                     // LSRs
                     log.info("Flow installing for LSRs");
@@ -564,6 +568,8 @@ public class AppComponent {
                     treatment.setOutput(outPort);
 
                     previousLabel = currentLabel;
+
+                    storeFlowRule(flowPair, selector, treatment, currentLabel, currentDeviceId, currentNetworkId);
                 }
 
                 // Build & send forwarding objective
@@ -574,8 +580,8 @@ public class AppComponent {
 //                storeFlowRule(src, dst, selector, treatment, currentDeviceId, currentNetworkId);
 
                 // NEW
-                // TODO: Temporarily not storing any MPLS Labels yet....
-                storeFlowRule(flowPair, selector, treatment, null, currentDeviceId, currentNetworkId);
+                // TODO: Temporarily not storing any MPLS Labels yet...
+                //storeFlowRule(flowPair, selector, treatment, null, currentDeviceId, currentNetworkId);
             }
 
             // Forward out current packet
@@ -762,7 +768,6 @@ public class AppComponent {
             log.info("event size: " + topologyEvent.reasons().size());
 
             for(Event e : topologyEvent.reasons()){
-//                log.info(e.toString());
                 log.info(e.subject().toString()); // returns DefaultLink
                 DefaultLink a =  (DefaultLink) e.subject();
                 affectedDevices.add(a.src().deviceId());
@@ -802,7 +807,14 @@ public class AppComponent {
                     // retract all flow rules from devices
                     List<FlowRuleInformation> flowRuleInformations = AppComponent.flowRuleStorage.getFlowRules(a.getKey(), f);
                     for(FlowRuleInformation g : flowRuleInformations) {
+                        // retract flow rule
                         flowRuleService.removeFlowRules(g.getFlowRule());
+
+                        // return mpls label if exist
+                        DeviceId currentDevice = g.getFlowRuleDeviceId();
+                        if(g.getMplsLabel()!=null){
+                            AppComponent.mplsLabelPool.get(currentDevice).returnLabel(g.getMplsLabel().toInt());
+                        }
                     }
 
                     // delete flowrule storage

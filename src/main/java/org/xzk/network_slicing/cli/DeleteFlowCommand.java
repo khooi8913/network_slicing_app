@@ -5,6 +5,7 @@ import org.apache.karaf.shell.commands.Command;
 import org.onlab.packet.IpAddress;
 import org.onosproject.cli.AbstractShellCommand;
 import org.onosproject.incubator.net.virtual.NetworkId;
+import org.onosproject.net.DeviceId;
 import org.onosproject.net.flow.FlowRuleService;
 import org.xzk.network_slicing.AppComponent;
 import org.xzk.network_slicing.FlowPair;
@@ -39,6 +40,12 @@ public class DeleteFlowCommand extends AbstractShellCommand {
         List<FlowRuleInformation> flowRules = AppComponent.flowRuleStorage.getFlowRules(netId, flowPair);
         for(FlowRuleInformation f : flowRules) {
             flowRuleService.removeFlowRules(f.getFlowRule());
+
+            DeviceId currentDeviceId = f.getFlowRuleDeviceId();
+            // return mpls label
+            if(f.getMplsLabel() != null) {
+                AppComponent.mplsLabelPool.get(currentDeviceId).returnLabel(f.getMplsLabel().toInt());
+            }
         }
 
         AppComponent.flowRuleStorage.deleteFlowRules(netId, flowPair);
