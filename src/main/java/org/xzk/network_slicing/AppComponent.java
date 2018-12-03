@@ -810,40 +810,6 @@ public class AppComponent {
                 }
                 toBeDeleted = new HashSet<>();
             }
-
-//            HashMap<IpAddress, IpAddress> toBeDeleted = new HashMap<>();
-//            // Iterate through all the FlowRules for all networks
-//            for(Map.Entry<NetworkId, InstalledFlowRules> a : tenantFlowRules.entrySet()){
-//                InstalledFlowRules flowRules = a.getValue();
-//
-//                for(Map.Entry<IpAddress, HashMap<IpAddress, ArrayList<FlowRule>>> b : flowRules.getAllFlowRules().entrySet()){
-//                    IpAddress srcIp = b.getKey();
-//
-//                    Set<DeviceId> devices = new HashSet<>();
-//
-//                    for(Map.Entry<IpAddress, ArrayList<FlowRule>> c : b.getValue().entrySet()){
-//                       IpAddress dstIp = c.getKey();
-//
-//                       // Look for affected devices
-//                       for(FlowRule d : c.getValue()){
-//                            DeviceId currentDeviceId = d.deviceId();
-//                            devices.add(currentDeviceId);
-//                       }
-//
-//                       if(devices.containsAll(affectedDevices)){
-//                           // Mark this flow rule to be deleted
-//                           toBeDeleted.put(srcIp, dstIp);
-//                           toBeDeleted.put(dstIp, srcIp);
-//                       }
-//                    }
-//                }
-//
-//                // Delete flow rules
-//                for(Map.Entry<IpAddress, IpAddress> x : toBeDeleted.entrySet()){
-//                    a.getValue().deleteFlowRules(x.getKey(), x.getValue());
-//                }
-//                toBeDeleted = new HashMap<>();
-//            }
         }
     }
 }

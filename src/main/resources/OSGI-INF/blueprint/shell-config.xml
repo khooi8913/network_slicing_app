@@ -40,6 +40,9 @@
         <command>
             <action class="org.xzk.network_slicing.cli.DeleteFlowCommand"/>
         </command>
+        <command>
+            <action class="org.xzk.network_slicing.cli.ListFlowCommand"/>
+        </command>
     </command-bundle>
 
 </blueprint>

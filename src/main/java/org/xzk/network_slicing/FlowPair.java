@@ -14,6 +14,14 @@ public class FlowPair {
         this.dst = dst;
     }
 
+    public IpAddress getSrc() {
+        return src;
+    }
+
+    public IpAddress getDst() {
+        return dst;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;

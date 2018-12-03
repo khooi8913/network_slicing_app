@@ -5,13 +5,11 @@ import org.apache.karaf.shell.commands.Command;
 import org.onlab.packet.IpAddress;
 import org.onosproject.cli.AbstractShellCommand;
 import org.onosproject.incubator.net.virtual.NetworkId;
-import org.onosproject.net.flow.FlowRule;
 import org.onosproject.net.flow.FlowRuleService;
 import org.xzk.network_slicing.AppComponent;
 import org.xzk.network_slicing.FlowPair;
 import org.xzk.network_slicing.FlowRuleInformation;
 
-import java.util.ArrayList;
 import java.util.List;
 
 @Command(scope = "onos", name = "ns-delete-flow",
@@ -44,15 +42,6 @@ public class DeleteFlowCommand extends AbstractShellCommand {
         }
 
         AppComponent.flowRuleStorage.deleteFlowRules(netId, flowPair);
-
-//        // TODO: Return the deleted flow rule's MPLS labels
-//        ArrayList<FlowRule> installedFlowRules = AppComponent.tenantFlowRules.get(netId).getFlowRules(src, dst);
-//        if (installedFlowRules != null) {
-//            for(FlowRule f : installedFlowRules) {
-//                flowRuleService.removeFlowRules(f);
-//            }
-//        }
-//        AppComponent.tenantFlowRules.get(netId).deleteFlowRules(src, dst);
         print("Flow successfully removed!");
     }
 }
