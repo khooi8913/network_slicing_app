@@ -15,31 +15,32 @@
  */
 package org.xzk.network_slicing;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.onosproject.rest.AbstractWebResource;
-
-import javax.ws.rs.GET;
-import javax.ws.rs.Path;
-import javax.ws.rs.core.Response;
-
-import static org.onlab.util.Tools.nullIsNotFound;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
 
 /**
- * Sample web resource.
+ * Set of tests of the ONOS application component.
  */
-@Path("sample")
-public class AppWebResource extends AbstractWebResource {
+public class NetworkSlicingTest {
 
-    /**
-     * Get hello world greeting.
-     *
-     * @return 200 OK
-     */
-    @GET
-    @Path("")
-    public Response getGreeting() {
-        ObjectNode node = mapper().createObjectNode().put("hello", "world");
-        return ok(node).build();
+    private NetworkSlicing component;
+
+    @Before
+    public void setUp() {
+//        component = new NetworkSlicing();
+//        component.activate();
+
+    }
+
+    @After
+    public void tearDown() {
+//        component.deactivate();
+    }
+
+    @Test
+    public void basics() {
+
     }
 
 }

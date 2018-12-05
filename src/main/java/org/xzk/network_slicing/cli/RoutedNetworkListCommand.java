@@ -6,8 +6,8 @@ import org.onlab.packet.IpAddress;
 import org.onlab.packet.IpPrefix;
 import org.onosproject.cli.AbstractShellCommand;
 import org.onosproject.incubator.net.virtual.NetworkId;
-import org.xzk.network_slicing.AppComponent;
-import org.xzk.network_slicing.RoutedNetworks;
+import org.xzk.network_slicing.NetworkSlicing;
+import org.xzk.network_slicing.models.RoutedNetworks;
 
 import java.util.Map;
 
@@ -22,8 +22,8 @@ public class RoutedNetworkListCommand extends AbstractShellCommand {
     @Override
     protected void execute() {
         NetworkId _networkId = NetworkId.networkId(networkId);
-        if (AppComponent.tenantRoutedNetworks.containsKey(_networkId)) {
-            RoutedNetworks routedNetworks = AppComponent.tenantRoutedNetworks.get(_networkId);
+        if (NetworkSlicing.tenantRoutedNetworks.containsKey(_networkId)) {
+            RoutedNetworks routedNetworks = NetworkSlicing.tenantRoutedNetworks.get(_networkId);
             if (routedNetworks.networkGateway != null) {
                 for (Map.Entry<IpPrefix, IpAddress> networks : routedNetworks.networkGateway.entrySet()) {
                     print("Network Address: " + networks.getKey().toString() + " Gateway: " + networks.getValue().toString());

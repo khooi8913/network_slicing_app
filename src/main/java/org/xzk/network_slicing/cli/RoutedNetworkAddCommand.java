@@ -6,8 +6,8 @@ import org.onlab.packet.IpAddress;
 import org.onlab.packet.IpPrefix;
 import org.onosproject.cli.AbstractShellCommand;
 import org.onosproject.incubator.net.virtual.NetworkId;
-import org.xzk.network_slicing.AppComponent;
-import org.xzk.network_slicing.RoutedNetworks;
+import org.xzk.network_slicing.NetworkSlicing;
+import org.xzk.network_slicing.models.RoutedNetworks;
 
 @Command(scope = "onos", name = "ns-add-routed-network",
         description = "Adds a routed network to a virtual network")
@@ -40,10 +40,10 @@ public class RoutedNetworkAddCommand extends AbstractShellCommand {
 
         if (routedNetworkAddress != null && gatewayAddress != null) {
             if (routedNetworkAddress.contains(gatewayAddress)) {
-                if (!AppComponent.tenantRoutedNetworks.containsKey(_networkId)) {
-                    AppComponent.tenantRoutedNetworks.put(_networkId, new RoutedNetworks());
+                if (!NetworkSlicing.tenantRoutedNetworks.containsKey(_networkId)) {
+                    NetworkSlicing.tenantRoutedNetworks.put(_networkId, new RoutedNetworks());
                 }
-                AppComponent.tenantRoutedNetworks.get(_networkId).networkGateway.put(routedNetworkAddress, gatewayAddress);
+                NetworkSlicing.tenantRoutedNetworks.get(_networkId).networkGateway.put(routedNetworkAddress, gatewayAddress);
                 print("Routed network entry added successfully!");
             } else {
                 print("Gateway does not belong to the specified network!");

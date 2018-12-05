@@ -1,4 +1,4 @@
-package org.xzk.network_slicing;
+package org.xzk.network_slicing.models;
 
 import org.onlab.packet.MplsLabel;
 import org.onosproject.net.DeviceId;

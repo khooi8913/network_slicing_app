@@ -1,4 +1,4 @@
-package org.xzk.network_slicing;
+package org.xzk.network_slicing.helper;
 
 import org.onosproject.net.DeviceId;
 import org.slf4j.Logger;
@@ -67,7 +67,8 @@ public class VirtualNetworkGraph {
 
         DeviceId currentSrc = destinationDeviceId;
         shortestPathList.add(currentSrc);
-        //quick hack to fix the algorithm to make sure that the shortest path is returned
+
+        // Quick hack to fix the algorithm to make sure that the shortest path is returned
         DeviceId previousDevice;
         while(true) {
             previousDevice = visitedFrom.get(currentSrc);

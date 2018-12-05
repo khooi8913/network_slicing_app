@@ -1,8 +1,10 @@
-package org.xzk.network_slicing;
+package org.xzk.network_slicing.helper;
 
 import org.onlab.packet.MplsLabel;
 import org.onosproject.incubator.net.virtual.NetworkId;
 import org.onosproject.net.flow.FlowRule;
+import org.xzk.network_slicing.models.FlowPair;
+import org.xzk.network_slicing.models.FlowRuleInformation;
 
 import java.util.HashMap;
 import java.util.LinkedList;

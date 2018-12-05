@@ -1,4 +1,4 @@
-package org.xzk.network_slicing;
+package org.xzk.network_slicing.helper;
 
 import java.util.LinkedList;
 import java.util.Queue;

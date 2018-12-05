@@ -7,9 +7,9 @@ import org.onosproject.cli.AbstractShellCommand;
 import org.onosproject.incubator.net.virtual.NetworkId;
 import org.onosproject.net.DeviceId;
 import org.onosproject.net.flow.FlowRuleService;
-import org.xzk.network_slicing.AppComponent;
-import org.xzk.network_slicing.FlowPair;
-import org.xzk.network_slicing.FlowRuleInformation;
+import org.xzk.network_slicing.NetworkSlicing;
+import org.xzk.network_slicing.models.FlowPair;
+import org.xzk.network_slicing.models.FlowRuleInformation;
 
 import java.util.List;
 
@@ -37,18 +37,18 @@ public class DeleteFlowCommand extends AbstractShellCommand {
         IpAddress dst = IpAddress.valueOf(dstIp);
 
         FlowPair flowPair = new FlowPair(src, dst);
-        List<FlowRuleInformation> flowRules = AppComponent.flowRuleStorage.getFlowRules(netId, flowPair);
+        List<FlowRuleInformation> flowRules = NetworkSlicing.flowRuleStorage.getFlowRules(netId, flowPair);
         for(FlowRuleInformation f : flowRules) {
             flowRuleService.removeFlowRules(f.getFlowRule());
 
             DeviceId currentDeviceId = f.getFlowRuleDeviceId();
             // Return MPLS label if any
             if(f.getMplsLabel() != null) {
-                AppComponent.mplsLabelPool.get(currentDeviceId).returnLabel(f.getMplsLabel().toInt());
+                NetworkSlicing.mplsLabelPool.get(currentDeviceId).returnLabel(f.getMplsLabel().toInt());
             }
         }
 
-        AppComponent.flowRuleStorage.deleteFlowRules(netId, flowPair);
+        NetworkSlicing.flowRuleStorage.deleteFlowRules(netId, flowPair);
         print("Flow successfully removed!");
     }
 }

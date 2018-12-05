@@ -1,4 +1,4 @@
-package org.xzk.network_slicing;
+package org.xzk.network_slicing.helper;
 
 import org.onlab.packet.MplsLabel;
 import org.onosproject.incubator.net.virtual.NetworkId;

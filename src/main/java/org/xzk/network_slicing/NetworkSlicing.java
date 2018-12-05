@@ -33,13 +33,18 @@ import org.onosproject.net.topology.TopologyListener;
 import org.onosproject.net.topology.TopologyService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.xzk.network_slicing.helper.FlowRuleStorage;
+import org.xzk.network_slicing.helper.MplsForwardingTable;
+import org.xzk.network_slicing.helper.MplsLabelPool;
+import org.xzk.network_slicing.helper.VirtualNetworkGraph;
+import org.xzk.network_slicing.models.*;
 
 import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.stream.StreamSupport;
 
 @Component(immediate = true)
-public class AppComponent {
+public class NetworkSlicing {
 
     private final Logger log = LoggerFactory.getLogger(getClass());
 
@@ -365,8 +370,8 @@ public class AppComponent {
             IpAddress destinationIp = IpAddress.valueOf(IpAddress.Version.INET, destinationIpAddress);
 
             // If ARP is for gateway
-            if (AppComponent.tenantRoutedNetworks.containsKey(networkId)) {
-                RoutedNetworks routedNetworks = AppComponent.tenantRoutedNetworks.get(networkId);
+            if (NetworkSlicing.tenantRoutedNetworks.containsKey(networkId)) {
+                RoutedNetworks routedNetworks = NetworkSlicing.tenantRoutedNetworks.get(networkId);
                 if (routedNetworks.networkGateway != null) {
                     for (Map.Entry<IpPrefix, IpAddress> networks : routedNetworks.networkGateway.entrySet()) {
                         if (destinationIp.equals(networks.getValue())) {
@@ -762,7 +767,7 @@ public class AppComponent {
             Set<DeviceId> devicesInFlow = new HashSet<>();
             Set<FlowPair> toBeDeleted = new HashSet<>();
 
-            HashMap<NetworkId, HashMap<FlowPair, List<FlowRuleInformation>>> allFlows = AppComponent.flowRuleStorage.getAllFlows();
+            HashMap<NetworkId, HashMap<FlowPair, List<FlowRuleInformation>>> allFlows = NetworkSlicing.flowRuleStorage.getAllFlows();
             for (Map.Entry<NetworkId, HashMap<FlowPair, List<FlowRuleInformation>>> a : allFlows.entrySet()) {
 
                 for (Map.Entry<FlowPair, List<FlowRuleInformation>> b : a.getValue().entrySet()) {
@@ -781,17 +786,17 @@ public class AppComponent {
 
                 for (FlowPair f : toBeDeleted) {
                     // Retract flow rules
-                    List<FlowRuleInformation> flowRuleInformations = AppComponent.flowRuleStorage.getFlowRules(a.getKey(), f);
+                    List<FlowRuleInformation> flowRuleInformations = NetworkSlicing.flowRuleStorage.getFlowRules(a.getKey(), f);
                     for (FlowRuleInformation flowRuleInfo : flowRuleInformations) {
                         flowRuleService.removeFlowRules(flowRuleInfo.getFlowRule());
 
                         // Return MPLS Label if any
                         DeviceId currentDevice = flowRuleInfo.getFlowRuleDeviceId();
                         if (flowRuleInfo.getMplsLabel() != null) {
-                            AppComponent.mplsLabelPool.get(currentDevice).returnLabel(flowRuleInfo.getMplsLabel().toInt());
+                            NetworkSlicing.mplsLabelPool.get(currentDevice).returnLabel(flowRuleInfo.getMplsLabel().toInt());
                         }
                     }
-                    AppComponent.flowRuleStorage.deleteFlowRules(a.getKey(), f);
+                    NetworkSlicing.flowRuleStorage.deleteFlowRules(a.getKey(), f);
                 }
                 toBeDeleted = new HashSet<>();
             }
