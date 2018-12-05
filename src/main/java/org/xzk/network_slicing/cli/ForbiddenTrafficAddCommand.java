@@ -36,7 +36,7 @@ public class ForbiddenTrafficAddCommand extends AbstractShellCommand {
         FlowPair flowPair1 = new FlowPair(host1, host2);
         FlowPair flowPair2 = new FlowPair(host2, host1);
 
-        if(!NetworkSlicing.forbiddenTraffic.containsKey(netId)){
+        if (!NetworkSlicing.forbiddenTraffic.containsKey(netId)) {
             NetworkSlicing.forbiddenTraffic.put(netId, new LinkedList<>());
         }
         NetworkSlicing.forbiddenTraffic.get(netId).add(flowPair1);
@@ -44,7 +44,7 @@ public class ForbiddenTrafficAddCommand extends AbstractShellCommand {
 
         print("Forbidden traffic entry added successfully!");
 
-        try{
+        try {
             NetworkSlicing.flowRuleStorage.deleteFlowRules(netId, flowPair1);
             NetworkSlicing.flowRuleStorage.deleteFlowRules(netId, flowPair2);
         } catch (NullPointerException e) {

@@ -14,19 +14,19 @@ public class MplsForwardingTable {
         mplsForwardingTable = new HashMap<>();
     }
 
-    public void addLabelToHost (NetworkId networkId, HostId hostId, MplsLabel mplsLabel) {
-        if(!this.mplsForwardingTable.containsKey(networkId)) {
+    public void addLabelToHost(NetworkId networkId, HostId hostId, MplsLabel mplsLabel) {
+        if (!this.mplsForwardingTable.containsKey(networkId)) {
             this.mplsForwardingTable.put(networkId, new HashMap<>());
         }
 
         this.mplsForwardingTable.get(networkId).put(hostId, mplsLabel);
     }
 
-    public MplsLabel getMplsLabel (NetworkId networkId, HostId hostId) {
+    public MplsLabel getMplsLabel(NetworkId networkId, HostId hostId) {
         return this.mplsForwardingTable.containsKey(networkId) ?
-               this.mplsForwardingTable.get(networkId).containsKey(hostId)?
-                       this.mplsForwardingTable.get(networkId).get(hostId) :
-                       null :
+                this.mplsForwardingTable.get(networkId).containsKey(hostId) ?
+                        this.mplsForwardingTable.get(networkId).get(hostId) :
+                        null :
                 null;
     }
 }

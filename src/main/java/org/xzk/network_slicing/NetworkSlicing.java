@@ -208,7 +208,7 @@ public class NetworkSlicing {
                     }
 
                     // Deny certain traffic here
-                    if(isForbidden(currentNetworkId, sourceHost, destinationHost)){
+                    if (isForbidden(currentNetworkId, sourceHost, destinationHost)) {
                         log.info("Flow is forbidden! Traffic denied!");
                         return;
                     }
@@ -407,12 +407,15 @@ public class NetworkSlicing {
 
         private boolean isForbidden(NetworkId networkId, VirtualHost sourceHost, VirtualHost destinationHost) {
 
-            IpAddress sourceIp = new ArrayList<IpAddress>(sourceHost.ipAddresses()).get(0);
-            IpAddress destIP = new ArrayList<IpAddress>(destinationHost.ipAddresses()).get(0);
+            IpAddress sourceIp = new ArrayList<>(sourceHost.ipAddresses()).get(0);
+            IpAddress destIP = new ArrayList<>(destinationHost.ipAddresses()).get(0);
 
             FlowPair flowPair = new FlowPair(sourceIp, destIP);
 
-            return forbiddenTraffic.get(networkId).contains(flowPair);
+            if (forbiddenTraffic.containsKey(networkId)) {
+                return forbiddenTraffic.get(networkId).contains(flowPair);
+            }
+            return false;
         }
 
         private boolean isHostOnSameDevice(VirtualHost sourceHost, VirtualHost destinationHost) {

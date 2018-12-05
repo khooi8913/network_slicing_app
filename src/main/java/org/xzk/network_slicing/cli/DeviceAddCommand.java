@@ -27,7 +27,7 @@ public class DeviceAddCommand extends AbstractShellCommand {
 
         if (deviceService.isAvailable(DeviceId.deviceId(deviceId))) {
             virtualNetworkAdminService.createVirtualDevice(NetworkId.networkId(networkId), DeviceId.deviceId(deviceId));
-            print("Device " + deviceId + " successfully added to the virtual network (ID=" + networkId+")");
+            print("Device " + deviceId + " successfully added to the virtual network (ID=" + networkId + ")");
         } else {
             error("Device does not exists in underlying network.");
         }

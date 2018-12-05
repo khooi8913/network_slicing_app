@@ -29,8 +29,12 @@ public class FlowListCommand extends AbstractShellCommand {
 
         StringBuilder sb;
 
-        int i=0;
-        for(Map.Entry<FlowPair, List<FlowRuleInformation>> f : flows.entrySet()) {
+        if (flows == null) {
+            return;
+        }
+
+        int i = 0;
+        for (Map.Entry<FlowPair, List<FlowRuleInformation>> f : flows.entrySet()) {
 
             int numOfFlows = flows.size();
             List<DeviceId> pathTaken = new LinkedList<>();
@@ -42,19 +46,19 @@ public class FlowListCommand extends AbstractShellCommand {
             sb.append((++i) + " " + flowPair.getSrc().toString() + " --> " + flowPair.getDst().toString() + "\n");
             sb.append("Path Taken: ");
 
-            for(FlowRuleInformation g : f.getValue()) {
+            for (FlowRuleInformation g : f.getValue()) {
                 pathTaken.add(g.getFlowRuleDeviceId());
             }
             Collections.reverse(pathTaken);
 
-            int j=0;
-            for(DeviceId d : pathTaken){
+            int j = 0;
+            for (DeviceId d : pathTaken) {
                 j++;
                 sb.append(d.toString());
-                if(j!=pathTaken.size()) sb.append(" ");
+                if (j != pathTaken.size()) sb.append(" ");
             }
 
-            if(i!=numOfFlows){
+            if (i != numOfFlows) {
                 sb.append("\n");
             }
             print(sb.toString());

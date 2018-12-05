@@ -61,7 +61,7 @@ public class VirtualNetworkGraph {
         }
 
         // If impossible to start BFS
-        if (!pathStack.contains(sourceDeviceId) || !pathStack.contains(destinationDeviceId)){
+        if (!pathStack.contains(sourceDeviceId) || !pathStack.contains(destinationDeviceId)) {
             return shortestPathList;
         }
 
@@ -70,10 +70,10 @@ public class VirtualNetworkGraph {
 
         // Quick hack to fix the algorithm to make sure that the shortest path is returned
         DeviceId previousDevice;
-        while(true) {
+        while (true) {
             previousDevice = visitedFrom.get(currentSrc);
             shortestPathList.add(previousDevice);
-            if(previousDevice.equals(sourceDeviceId)){
+            if (previousDevice.equals(sourceDeviceId)) {
                 break;
             }
             currentSrc = previousDevice;

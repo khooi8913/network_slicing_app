@@ -27,10 +27,10 @@ public class ForbiddenTrafficListCommand extends AbstractShellCommand {
             return;
         }
 
-        print("========== Forbidden Flows (NetworkID = "+ netId +") ==========");
-        int i=0;
-        for(FlowPair f : flowPairs) {
-            print((++i) + " "  + f.getSrc() + " " + f.getDst());
+        print("========== Forbidden Flows (NetworkID = " + netId + ") ==========");
+        int i = 0;
+        for (FlowPair f : flowPairs) {
+            print((++i) + " " + f.getSrc() + " " + f.getDst());
         }
     }
 }

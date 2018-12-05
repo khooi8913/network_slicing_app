@@ -38,12 +38,12 @@ public class FlowDeleteCommand extends AbstractShellCommand {
 
         FlowPair flowPair = new FlowPair(src, dst);
         List<FlowRuleInformation> flowRules = NetworkSlicing.flowRuleStorage.getFlowRules(netId, flowPair);
-        for(FlowRuleInformation f : flowRules) {
+        for (FlowRuleInformation f : flowRules) {
             flowRuleService.removeFlowRules(f.getFlowRule());
 
             DeviceId currentDeviceId = f.getFlowRuleDeviceId();
             // Return MPLS label if any
-            if(f.getMplsLabel() != null) {
+            if (f.getMplsLabel() != null) {
                 NetworkSlicing.mplsLabelPool.get(currentDeviceId).returnLabel(f.getMplsLabel().toInt());
             }
         }

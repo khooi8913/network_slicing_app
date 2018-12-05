@@ -16,8 +16,8 @@ public class MplsLabelPool {
         currentLabel = 1;
     }
 
-    public int getNextLabel () {
-        if(!withdrawedLabels.isEmpty()){
+    public int getNextLabel() {
+        if (!withdrawedLabels.isEmpty()) {
             return withdrawedLabels.poll();
         } else {
             // TODO: currentLabel++ < MAX_LABEL ?

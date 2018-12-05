@@ -46,7 +46,7 @@ public class TenantAddCommand extends AbstractShellCommand {
                 error("Tenant " + tenantId + " already exists!");
             }
         } else {    // Invalid TenantID
-            error ("Invalid Tenant ID input. Tenant ID can only contain alphanumeric characters and underscore only");
+            error("Invalid Tenant ID input. Tenant ID can only contain alphanumeric characters and underscore only");
         }
     }
 }

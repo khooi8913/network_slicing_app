@@ -36,15 +36,15 @@ public class ForbiddenTrafficDeleteCommand extends AbstractShellCommand {
         FlowPair flowPair1 = new FlowPair(host1, host2);
         FlowPair flowPair2 = new FlowPair(host2, host1);
 
-        try{
-            if(NetworkSlicing.forbiddenTraffic.containsKey(netId)){
+        try {
+            if (NetworkSlicing.forbiddenTraffic.containsKey(netId)) {
                 NetworkSlicing.forbiddenTraffic.get(netId).remove(flowPair1);
                 NetworkSlicing.forbiddenTraffic.get(netId).remove(flowPair2);
                 print("Forbidden traffic removed!");
-            }else {
+            } else {
                 print("Forbidden traffic does not exists!");
             }
-        } catch (NoSuchElementException e){
+        } catch (NoSuchElementException e) {
             print("Forbidden traffic does not exists!");
         }
 

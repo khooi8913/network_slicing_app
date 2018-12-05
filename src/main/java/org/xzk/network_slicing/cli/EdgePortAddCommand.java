@@ -48,7 +48,7 @@ public class EdgePortAddCommand extends AbstractShellCommand {
                     DeviceId.deviceId(deviceId),
                     PortNumber.portNumber(portNum),
                     requestedPort
-                    );
+            );
 
             virtualNetworkAdminService.bindVirtualPort(
                     NetworkId.networkId(networkId),
