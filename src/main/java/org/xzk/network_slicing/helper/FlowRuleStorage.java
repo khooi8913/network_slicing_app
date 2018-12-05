@@ -12,7 +12,7 @@ import java.util.List;
 
 public class FlowRuleStorage {
 
-    private HashMap<NetworkId, HashMap<FlowPair, List<FlowRuleInformation>>> flowRuleStorage = new HashMap<>();
+    private HashMap<NetworkId, HashMap<FlowPair, List<FlowRuleInformation>>> flowRuleStorage;
 
     public FlowRuleStorage() {
         this.flowRuleStorage = new HashMap<>();

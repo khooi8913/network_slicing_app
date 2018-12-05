@@ -35,7 +35,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.xzk.network_slicing.helper.FlowRuleStorage;
 import org.xzk.network_slicing.helper.MplsForwardingTable;
-import org.xzk.network_slicing.helper.MplsLabelPool;
+import org.xzk.network_slicing.models.MplsLabelPool;
 import org.xzk.network_slicing.helper.VirtualNetworkGraph;
 import org.xzk.network_slicing.models.*;
 
@@ -612,8 +612,8 @@ public class NetworkSlicing {
             Collections.reverse(computedPath);
             return computedPath;
         }
-        // Get Links in the path
 
+        // Get Links in the path
         private List<Link> getForwardPathLinks(NetworkId networkId, ArrayList<DeviceId> deviceIds) {
             List<Link> links = new LinkedList<>();
 
@@ -784,9 +784,9 @@ public class NetworkSlicing {
                     devicesInFlow.clear();
                 }
 
-                for (FlowPair f : toBeDeleted) {
+                for (FlowPair flowPair : toBeDeleted) {
                     // Retract flow rules
-                    List<FlowRuleInformation> flowRuleInformations = NetworkSlicing.flowRuleStorage.getFlowRules(a.getKey(), f);
+                    List<FlowRuleInformation> flowRuleInformations = NetworkSlicing.flowRuleStorage.getFlowRules(a.getKey(), flowPair);
                     for (FlowRuleInformation flowRuleInfo : flowRuleInformations) {
                         flowRuleService.removeFlowRules(flowRuleInfo.getFlowRule());
 
@@ -796,7 +796,7 @@ public class NetworkSlicing {
                             NetworkSlicing.mplsLabelPool.get(currentDevice).returnLabel(flowRuleInfo.getMplsLabel().toInt());
                         }
                     }
-                    NetworkSlicing.flowRuleStorage.deleteFlowRules(a.getKey(), f);
+                    NetworkSlicing.flowRuleStorage.deleteFlowRules(a.getKey(), flowPair);
                 }
                 toBeDeleted = new HashSet<>();
             }

@@ -4,13 +4,12 @@ import org.apache.karaf.shell.commands.Argument;
 import org.apache.karaf.shell.commands.Command;
 import org.onosproject.cli.AbstractShellCommand;
 import org.onosproject.incubator.net.virtual.NetworkId;
+import org.onosproject.net.DeviceId;
 import org.xzk.network_slicing.NetworkSlicing;
 import org.xzk.network_slicing.models.FlowPair;
 import org.xzk.network_slicing.models.FlowRuleInformation;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Command(scope = "onos", name = "ns-list-flow",
         description = "Deletes flow given source and destination")
@@ -27,10 +26,38 @@ public class ListFlowCommand extends AbstractShellCommand {
         HashMap<FlowPair, List<FlowRuleInformation>> flows = NetworkSlicing.flowRuleStorage.getAllFlowsPerNetwork(netId);
 
         print("========== Installed Flows (NetworkID = " + networkId + ") ==========");
-        int i=1;
+
+        StringBuilder sb;
+
+        int i=0;
         for(Map.Entry<FlowPair, List<FlowRuleInformation>> f : flows.entrySet()) {
+
+            int numOfFlows = flows.size();
+            List<DeviceId> pathTaken = new LinkedList<>();
+
+            sb = new StringBuilder();
+
             FlowPair flowPair = f.getKey();
-            print((i++) + " " + flowPair.getSrc().toString() + " --> " + flowPair.getDst().toString());
+
+            sb.append((++i) + " " + flowPair.getSrc().toString() + " --> " + flowPair.getDst().toString() + "\n");
+            sb.append("Path Taken: ");
+
+            for(FlowRuleInformation g : f.getValue()) {
+                pathTaken.add(g.getFlowRuleDeviceId());
+            }
+            Collections.reverse(pathTaken);
+
+            int j=0;
+            for(DeviceId d : pathTaken){
+                j++;
+                sb.append(d.toString());
+                if(j!=pathTaken.size()) sb.append(" ");
+            }
+
+            if(i!=numOfFlows){
+                sb.append("\n");
+            }
+            print(sb.toString());
         }
     }
 

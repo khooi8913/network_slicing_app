@@ -60,7 +60,7 @@ public class VirtualNetworkGraph {
             }
         }
 
-        // If impossible to start bfs
+        // If impossible to start BFS
         if (!pathStack.contains(sourceDeviceId) || !pathStack.contains(destinationDeviceId)){
             return shortestPathList;
         }

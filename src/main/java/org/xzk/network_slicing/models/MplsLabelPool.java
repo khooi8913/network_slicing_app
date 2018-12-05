@@ -1,4 +1,4 @@
-package org.xzk.network_slicing.helper;
+package org.xzk.network_slicing.models;
 
 import java.util.LinkedList;
 import java.util.Queue;
@@ -20,7 +20,7 @@ public class MplsLabelPool {
         if(!withdrawedLabels.isEmpty()){
             return withdrawedLabels.poll();
         } else {
-            // TODO: MAX_LABEL?
+            // TODO: currentLabel++ < MAX_LABEL ?
             return currentLabel++;
         }
     }

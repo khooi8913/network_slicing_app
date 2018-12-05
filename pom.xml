@@ -18,7 +18,7 @@
 
     <groupId>org.xzk</groupId>
     <artifactId>network_slicing</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <version>1.0</version>
     <packaging>bundle</packaging>
 
     <description>ONOS OSGi bundle archetype</description>
@@ -32,9 +32,6 @@
         <onos.app.title>Network Slicing App</onos.app.title>
         <onos.app.origin>Xzk</onos.app.origin>
         <onos.app.category>default</onos.app.category>
-        <api.description>Sample application REST API</api.description>
-        <web.context>/onos/network_slicing</web.context>
-        <api.title>Sample app REST API</api.title>
         <onos.app.url>http://onosproject.org</onos.app.url>
         <api.package>org.xzk.network_slicing</api.package>
         <onos.app.readme>ONOS OSGi bundle archetype.</onos.app.readme>
@@ -147,14 +144,14 @@
                 <version>3.3.0</version>
                 <extensions>true</extensions>
                 <configuration>
-          <instructions>
-            <_wab>src/main/webapp/</_wab>
-            <Include-Resource>WEB-INF/classes/apidoc/swagger.json=target/swagger.json,
-                            {maven-resources}</Include-Resource>
-            <Bundle-SymbolicName>${project.groupId}.${project.artifactId}</Bundle-SymbolicName>
-            <Import-Package>*,org.glassfish.jersey.servlet</Import-Package>
-            <Web-ContextPath>${web.context}</Web-ContextPath>
-          </instructions>
+          <!--<instructions>-->
+            <!--<_wab>src/main/webapp/</_wab>-->
+            <!--<Include-Resource>WEB-INF/classes/apidoc/swagger.json=target/swagger.json,-->
+                            <!--{maven-resources}</Include-Resource>-->
+            <!--<Bundle-SymbolicName>${project.groupId}.${project.artifactId}</Bundle-SymbolicName>-->
+            <!--<Import-Package>*,org.glassfish.jersey.servlet</Import-Package>-->
+            <!--<Web-ContextPath>${web.context}</Web-ContextPath>-->
+          <!--</instructions>-->
         </configuration>
             </plugin>
             <plugin>
