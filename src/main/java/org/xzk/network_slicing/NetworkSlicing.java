@@ -80,6 +80,7 @@ public class NetworkSlicing {
     // Tenant's Info
     public static HashMap<NetworkId, RoutedNetworks> tenantRoutedNetworks;
     public static FlowRuleStorage flowRuleStorage;
+    public static HashMap<NetworkId, List<FlowPair>> forbiddenTraffic;
 
     // MplsTables
     public static HashMap<DeviceId, MplsLabelPool> mplsLabelPool;
@@ -94,6 +95,7 @@ public class NetworkSlicing {
 
         flowRuleStorage = new FlowRuleStorage();
         tenantRoutedNetworks = new HashMap<>();
+        forbiddenTraffic = new HashMap<>();
 
         mplsLabelPool = new HashMap<>();
         mplsForwardingTable = new HashMap<>();
@@ -125,6 +127,7 @@ public class NetworkSlicing {
 
         flowRuleStorage = null;
         tenantRoutedNetworks = null;
+        forbiddenTraffic = null;
 
         mplsLabelPool = null;
         mplsForwardingTable = null;
@@ -198,11 +201,18 @@ public class NetworkSlicing {
                     boolean isToBeRouted = isToBeRouted(destinationMac);
                     VirtualHost destinationHost = getDestinationHost(isToBeRouted, ethernetPacket, currentNetworkId);
 
-                    // TODO: What if headed to external network?
+                    // TODO: How about traffic to the external network? NAT?
                     if (destinationHost == null) {
                         log.info("Destination host does not exist!");
                         return;
                     }
+
+                    // Deny certain traffic here
+                    if(isForbidden(currentNetworkId, sourceHost, destinationHost)){
+                        log.info("Flow is forbidden! Traffic denied!");
+                        return;
+                    }
+
 
                     if (isHostOnSameDevice(sourceHost, destinationHost)) {
 
@@ -393,6 +403,16 @@ public class NetworkSlicing {
             }
 
             return null;
+        }
+
+        private boolean isForbidden(NetworkId networkId, VirtualHost sourceHost, VirtualHost destinationHost) {
+
+            IpAddress sourceIp = new ArrayList<IpAddress>(sourceHost.ipAddresses()).get(0);
+            IpAddress destIP = new ArrayList<IpAddress>(destinationHost.ipAddresses()).get(0);
+
+            FlowPair flowPair = new FlowPair(sourceIp, destIP);
+
+            return forbiddenTraffic.get(networkId).contains(flowPair);
         }
 
         private boolean isHostOnSameDevice(VirtualHost sourceHost, VirtualHost destinationHost) {
@@ -802,4 +822,5 @@ public class NetworkSlicing {
             }
         }
     }
+
 }

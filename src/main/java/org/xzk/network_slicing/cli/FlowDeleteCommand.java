@@ -15,17 +15,17 @@ import java.util.List;
 
 @Command(scope = "onos", name = "ns-delete-flow",
         description = "Deletes flow given source and destination")
-public class DeleteFlowCommand extends AbstractShellCommand {
+public class FlowDeleteCommand extends AbstractShellCommand {
 
     @Argument(index = 0, name = "networkId", description = "Network ID",
             required = true, multiValued = false)
     Long networkId = null;
 
-    @Argument(index = 1, name = "srcIp", description = "Device ID",
+    @Argument(index = 1, name = "srcIp", description = "Source IP",
             required = true, multiValued = false)
     String srcIp = null;
 
-    @Argument(index = 2, name = "dstIp", description = "Device ID",
+    @Argument(index = 2, name = "dstIp", description = "Destination IP",
             required = true, multiValued = false)
     String dstIp = null;
 

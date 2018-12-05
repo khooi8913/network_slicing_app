@@ -38,10 +38,19 @@
             <action class="org.xzk.network_slicing.cli.RoutedNetworkListCommand"/>
         </command>
         <command>
-            <action class="org.xzk.network_slicing.cli.DeleteFlowCommand"/>
+            <action class="org.xzk.network_slicing.cli.FlowDeleteCommand"/>
         </command>
         <command>
-            <action class="org.xzk.network_slicing.cli.ListFlowCommand"/>
+            <action class="org.xzk.network_slicing.cli.FlowListCommand"/>
+        </command>
+        <command>
+            <action class="org.xzk.network_slicing.cli.ForbiddenTrafficAddCommand"/>
+        </command>
+        <command>
+            <action class="org.xzk.network_slicing.cli.ForbiddenTrafficDeleteCommand"/>
+        </command>
+        <command>
+            <action class="org.xzk.network_slicing.cli.ForbiddenTrafficListCommand"/>
         </command>
     </command-bundle>
 

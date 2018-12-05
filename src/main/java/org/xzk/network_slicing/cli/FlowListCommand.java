@@ -12,8 +12,8 @@ import org.xzk.network_slicing.models.FlowRuleInformation;
 import java.util.*;
 
 @Command(scope = "onos", name = "ns-list-flow",
-        description = "Deletes flow given source and destination")
-public class ListFlowCommand extends AbstractShellCommand {
+        description = "Lists flows installed for a specified virtual network")
+public class FlowListCommand extends AbstractShellCommand {
 
     @Argument(index = 0, name = "networkId", description = "Network ID",
             required = true, multiValued = false)
