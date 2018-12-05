@@ -72,16 +72,13 @@ public class AppComponent {
     private final byte[] gatewayMac = {00, 01, 02, 03, 04, 05};
     private final int DEFAULT_PRIORITY = 100;
 
-    // Tenant Info
+    // Tenant's Info
     public static HashMap<NetworkId, RoutedNetworks> tenantRoutedNetworks;
-    public static HashMap<NetworkId, InstalledFlowRules> tenantFlowRules;
-
-    // NEW
-    public static FlowRuleStorage flowRuleStorage = new FlowRuleStorage();
+    public static FlowRuleStorage flowRuleStorage;
 
     // MplsTables
-    public static HashMap<DeviceId, MplsLabelPool> mplsLabelPool = new HashMap<>();
-    public static HashMap<DeviceId, MplsForwardingTable> mplsForwardingTable = new HashMap<>();
+    public static HashMap<DeviceId, MplsLabelPool> mplsLabelPool;
+    public static HashMap<DeviceId, MplsForwardingTable> mplsForwardingTable;
 
     @Activate
     protected void activate() {
@@ -89,8 +86,12 @@ public class AppComponent {
         requestIntercepts();
         packetService.addProcessor(virtualNetworkPacketProcessor, PacketProcessor.director(2));
         topologyService.addListener(virtualNetworkTopologyListener);
+
+        flowRuleStorage = new FlowRuleStorage();
         tenantRoutedNetworks = new HashMap<>();
-        tenantFlowRules = new HashMap<>();
+
+        mplsLabelPool = new HashMap<>();
+        mplsForwardingTable = new HashMap<>();
         log.info("Started");
     }
 
@@ -116,7 +117,12 @@ public class AppComponent {
         flowRuleService.removeFlowRulesById(appId);
         virtualNetworkPacketProcessor = null;
         virtualNetworkTopologyListener = null;
+
+        flowRuleStorage = null;
         tenantRoutedNetworks = null;
+
+        mplsLabelPool = null;
+        mplsForwardingTable = null;
         log.info("Stopped");
     }
 
@@ -443,7 +449,6 @@ public class AppComponent {
                     sourceHost,
                     destinationHost
             );
-            Collections.reverse(pathNodes);
 
             // Display path
             for (DeviceId deviceId : pathNodes) log.info(deviceId.toString());
@@ -575,13 +580,6 @@ public class AppComponent {
                 // Build & send forwarding objective
                 sendFlowObjective(currentDeviceId, selector, treatment);
                 log.info("Flow objective sent to device!" + currentDeviceId.toString());
-
-                // Store FlowRule
-//                storeFlowRule(src, dst, selector, treatment, currentDeviceId, currentNetworkId);
-
-                // NEW
-                // TODO: Temporarily not storing any MPLS Labels yet...
-                //storeFlowRule(flowPair, selector, treatment, null, currentDeviceId, currentNetworkId);
             }
 
             // Forward out current packet
@@ -595,21 +593,19 @@ public class AppComponent {
             // Get all the virtual links available
             Set<VirtualLink> virtualLinks = virtualNetworkAdminService.getVirtualLinks(networkId);
 
-//            // Get all the virtual devices available
-//            Set<VirtualDevice> virtualDevices = virtualNetworkAdminService.getVirtualDevices(networkId);
-//
-//            // Construct Graph
-//            int numberOfVertices = virtualDevices.size();
+            // Construct Graph
             VirtualNetworkGraph virtualNetworkGraph = new VirtualNetworkGraph();
             for (VirtualLink virtualLink : virtualLinks) {
-                if(virtualLink.state().equals(VirtualLink.State.ACTIVE)){
+                if (virtualLink.state().equals(VirtualLink.State.ACTIVE)) {
                     virtualNetworkGraph.addEdge(virtualLink.src().deviceId(), virtualLink.dst().deviceId());
                 }
             }
 
             // If it's A->B->C, it will return C, B, A. Order is reversed
-            return virtualNetworkGraph.bfsForShortestPath(sourceHost.location().deviceId(),
+            ArrayList<DeviceId> computedPath = virtualNetworkGraph.bfsForShortestPath(sourceHost.location().deviceId(),
                     destinationHost.location().deviceId());
+            Collections.reverse(computedPath);
+            return computedPath;
         }
         // Get Links in the path
 
@@ -621,7 +617,7 @@ public class AppComponent {
 
             for (int i = 0; i < deviceIds.size() - 1; i++) {
                 for (VirtualLink virtualLink : virtualLinks) {
-                    if(virtualLink.state().equals(VirtualLink.State.ACTIVE)){
+                    if (virtualLink.state().equals(VirtualLink.State.ACTIVE)) {
                         if (virtualLink.src().deviceId().equals(deviceIds.get(i)) &&
                                 virtualLink.dst().deviceId().equals(deviceIds.get(i + 1))) {
                             links.add(virtualLink);
@@ -688,26 +684,11 @@ public class AppComponent {
                     .add();
             flowObjectiveService.forward(deviceId, forwardingObjective);
         }
-        // Sends a packet out the specified port.
 
+        // Sends a packet out the specified port.
         private void packetOut(PacketContext packetContext, PortNumber portNumber) {
             packetContext.treatmentBuilder().setOutput(portNumber);
             packetContext.send();
-        }
-
-        private void storeFlowRule(IpAddress src, IpAddress dst, TrafficSelector.Builder selector, TrafficTreatment.Builder treatment, DeviceId deviceId, NetworkId networkId) {
-            FlowRule flowRule = DefaultFlowRule.builder()
-                    .withSelector(selector.build())
-                    .withTreatment(treatment.build())
-                    .withPriority(DEFAULT_PRIORITY)
-                    .withHardTimeout(FlowRule.MAX_TIMEOUT)
-                    .fromApp(appId)
-                    .forDevice(deviceId)
-                    .build();
-            if (!tenantFlowRules.containsKey(networkId)) {
-                tenantFlowRules.put(networkId, new InstalledFlowRules());
-            }
-            tenantFlowRules.get(networkId).addFlowRule(src, dst, flowRule);
         }
 
         // New FlowRuleStorageMechanism
@@ -765,59 +746,51 @@ public class AppComponent {
             Set<DeviceId> affectedDevices = new HashSet<>();
 
             log.info(topologyEvent.toString());
-            log.info("event size: " + topologyEvent.reasons().size());
-
-            for(Event e : topologyEvent.reasons()){
-                log.info(e.subject().toString()); // returns DefaultLink
-                DefaultLink a =  (DefaultLink) e.subject();
-                affectedDevices.add(a.src().deviceId());
-                affectedDevices.add(a.dst().deviceId());
+            for (Event e : topologyEvent.reasons()) {
+                DefaultLink affectedLink = (DefaultLink) e.subject();
+                affectedDevices.add(affectedLink.src().deviceId());
+                affectedDevices.add(affectedLink.dst().deviceId());
             }
 
-
-            log.info("Affected devices: " );
-            for(DeviceId d : affectedDevices) {
-                log.info(d.toString());
+            // Display affected devices
+            log.info("Topology change detected!");
+            log.info("Affected devices: ");
+            for (DeviceId affectedDevice : affectedDevices) {
+                log.info(affectedDevice.toString());
             }
 
             Set<DeviceId> devicesInFlow = new HashSet<>();
             Set<FlowPair> toBeDeleted = new HashSet<>();
 
             HashMap<NetworkId, HashMap<FlowPair, List<FlowRuleInformation>>> allFlows = AppComponent.flowRuleStorage.getAllFlows();
-            for(Map.Entry<NetworkId, HashMap<FlowPair, List<FlowRuleInformation>>> a : allFlows.entrySet()) {
+            for (Map.Entry<NetworkId, HashMap<FlowPair, List<FlowRuleInformation>>> a : allFlows.entrySet()) {
 
-                for(Map.Entry<FlowPair, List<FlowRuleInformation>> b : a.getValue().entrySet()) {
+                for (Map.Entry<FlowPair, List<FlowRuleInformation>> b : a.getValue().entrySet()) {
 
                     List<FlowRuleInformation> flowRulesList = b.getValue();
                     // Iterate over all flow rule to extract device ID
-                    for(FlowRuleInformation f : flowRulesList) {
+                    for (FlowRuleInformation f : flowRulesList) {
                         devicesInFlow.add(f.getFlowRuleDeviceId());
                     }
-
-                    // Check whether it is affected by the topology change
-                    if(devicesInFlow.containsAll(affectedDevices)) {
-                        // Mark as to be deleted
+                    // If affected by topology change, mark as to be deleted
+                    if (devicesInFlow.containsAll(affectedDevices)) {
                         toBeDeleted.add(b.getKey());
                     }
-
-                    // Clear and check for next flow rule
                     devicesInFlow.clear();
                 }
-                for(FlowPair f : toBeDeleted) {
-                    // retract all flow rules from devices
-                    List<FlowRuleInformation> flowRuleInformations = AppComponent.flowRuleStorage.getFlowRules(a.getKey(), f);
-                    for(FlowRuleInformation g : flowRuleInformations) {
-                        // retract flow rule
-                        flowRuleService.removeFlowRules(g.getFlowRule());
 
-                        // return mpls label if exist
-                        DeviceId currentDevice = g.getFlowRuleDeviceId();
-                        if(g.getMplsLabel()!=null){
-                            AppComponent.mplsLabelPool.get(currentDevice).returnLabel(g.getMplsLabel().toInt());
+                for (FlowPair f : toBeDeleted) {
+                    // Retract flow rules
+                    List<FlowRuleInformation> flowRuleInformations = AppComponent.flowRuleStorage.getFlowRules(a.getKey(), f);
+                    for (FlowRuleInformation flowRuleInfo : flowRuleInformations) {
+                        flowRuleService.removeFlowRules(flowRuleInfo.getFlowRule());
+
+                        // Return MPLS Label if any
+                        DeviceId currentDevice = flowRuleInfo.getFlowRuleDeviceId();
+                        if (flowRuleInfo.getMplsLabel() != null) {
+                            AppComponent.mplsLabelPool.get(currentDevice).returnLabel(flowRuleInfo.getMplsLabel().toInt());
                         }
                     }
-
-                    // delete flowrule storage
                     AppComponent.flowRuleStorage.deleteFlowRules(a.getKey(), f);
                 }
                 toBeDeleted = new HashSet<>();

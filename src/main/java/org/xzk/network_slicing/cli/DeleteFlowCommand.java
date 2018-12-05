@@ -42,7 +42,7 @@ public class DeleteFlowCommand extends AbstractShellCommand {
             flowRuleService.removeFlowRules(f.getFlowRule());
 
             DeviceId currentDeviceId = f.getFlowRuleDeviceId();
-            // return mpls label
+            // Return MPLS label if any
             if(f.getMplsLabel() != null) {
                 AppComponent.mplsLabelPool.get(currentDeviceId).returnLabel(f.getMplsLabel().toInt());
             }
