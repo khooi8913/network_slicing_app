@@ -595,12 +595,12 @@ public class AppComponent {
             // Get all the virtual links available
             Set<VirtualLink> virtualLinks = virtualNetworkAdminService.getVirtualLinks(networkId);
 
-            // Get all the virtual devices available
-            Set<VirtualDevice> virtualDevices = virtualNetworkAdminService.getVirtualDevices(networkId);
-
-            // Construct Graph
-            int numberOfVertices = virtualDevices.size();
-            VirtualNetworkGraph virtualNetworkGraph = new VirtualNetworkGraph(numberOfVertices);
+//            // Get all the virtual devices available
+//            Set<VirtualDevice> virtualDevices = virtualNetworkAdminService.getVirtualDevices(networkId);
+//
+//            // Construct Graph
+//            int numberOfVertices = virtualDevices.size();
+            VirtualNetworkGraph virtualNetworkGraph = new VirtualNetworkGraph();
             for (VirtualLink virtualLink : virtualLinks) {
                 if(virtualLink.state().equals(VirtualLink.State.ACTIVE)){
                     virtualNetworkGraph.addEdge(virtualLink.src().deviceId(), virtualLink.dst().deviceId());

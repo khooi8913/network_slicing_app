@@ -10,12 +10,9 @@ import java.util.*;
 public class VirtualNetworkGraph {
 
     private final Logger log = LoggerFactory.getLogger(getClass());
-
-    private int V;
     private HashMap<DeviceId, LinkedList<DeviceId>> adj;
 
-    public VirtualNetworkGraph(int V) {
-        this.V = V;
+    public VirtualNetworkGraph() {
         adj = new HashMap<>();
     }
 
@@ -28,6 +25,7 @@ public class VirtualNetworkGraph {
 
     public ArrayList<DeviceId> bfsForShortestPath(DeviceId sourceDeviceId, DeviceId destinationDeviceId) {
         HashMap<DeviceId, Boolean> visited = new HashMap<>();
+        HashMap<DeviceId, DeviceId> visitedFrom = new HashMap<>();
         ArrayList<DeviceId> shortestPathList = new ArrayList<>();
 
         if (sourceDeviceId.equals(destinationDeviceId)) {
@@ -48,12 +46,16 @@ public class VirtualNetworkGraph {
             for (DeviceId deviceId : adjList) {
                 if (!visited.containsKey(deviceId)) {
                     if (deviceId.equals(destinationDeviceId)) {
+                        visitedFrom.put(deviceId, currentDevice);
                         pathStack.add(deviceId);
                         break;
                     } else {
                         queue.add(deviceId);
                         visited.put(deviceId, true);
                         pathStack.add(deviceId);
+
+                        // testing
+                        visitedFrom.put(deviceId, currentDevice);
                     }
                 }
             }
@@ -64,23 +66,37 @@ public class VirtualNetworkGraph {
             return shortestPathList;
         }
 
-        DeviceId node;
         DeviceId currentSrc = destinationDeviceId;
-        shortestPathList.add(destinationDeviceId);
-        while (!pathStack.isEmpty()) {
-            node = pathStack.pop();
-            if (this.adj.get(currentSrc).contains(node) &&
-                    this.adj.get(node).contains(currentSrc)) {
-
-                shortestPathList.add(node);
-                currentSrc = node;
-
-                if (node.equals(sourceDeviceId)) {
-                    break;
-                }
-
+        shortestPathList.add(currentSrc);
+        //quick hack to fix the algorithm to make sure that the shortest path is returned
+        DeviceId previousDevice;
+        while(true) {
+            previousDevice = visitedFrom.get(currentSrc);
+            shortestPathList.add(previousDevice);
+            if(previousDevice.equals(sourceDeviceId)){
+                break;
             }
+            currentSrc = previousDevice;
         }
+
+        // below does not guarantee to get the shortest path
+//        DeviceId node;
+//        while (!pathStack.isEmpty()) {
+//            node = pathStack.pop();
+//
+//            // if they are adjacent nodes
+//            if (this.adj.get(currentSrc).contains(node) &&
+//                    this.adj.get(node).contains(currentSrc)) {
+//
+//                shortestPathList.add(node);
+//                currentSrc = node;
+//
+//                if (node.equals(sourceDeviceId)) {
+//                    break;
+//                }
+//
+//            }
+//        }
         return shortestPathList;
     }
 }
