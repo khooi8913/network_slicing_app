@@ -46,16 +46,15 @@ public class VirtualNetworkGraph {
             for (DeviceId deviceId : adjList) {
                 if (!visited.containsKey(deviceId)) {
                     if (deviceId.equals(destinationDeviceId)) {
+                        visited.put(deviceId, true);
                         visitedFrom.put(deviceId, currentDevice);
                         pathStack.add(deviceId);
                         break;
                     } else {
                         queue.add(deviceId);
                         visited.put(deviceId, true);
-                        pathStack.add(deviceId);
-
-                        // testing
                         visitedFrom.put(deviceId, currentDevice);
+                        pathStack.add(deviceId);
                     }
                 }
             }
@@ -79,24 +78,6 @@ public class VirtualNetworkGraph {
             currentSrc = previousDevice;
         }
 
-        // below does not guarantee to get the shortest path
-//        DeviceId node;
-//        while (!pathStack.isEmpty()) {
-//            node = pathStack.pop();
-//
-//            // if they are adjacent nodes
-//            if (this.adj.get(currentSrc).contains(node) &&
-//                    this.adj.get(node).contains(currentSrc)) {
-//
-//                shortestPathList.add(node);
-//                currentSrc = node;
-//
-//                if (node.equals(sourceDeviceId)) {
-//                    break;
-//                }
-//
-//            }
-//        }
         return shortestPathList;
     }
 }
