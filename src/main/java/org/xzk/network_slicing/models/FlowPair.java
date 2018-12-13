@@ -33,6 +33,6 @@ public class FlowPair {
 
     @Override
     public int hashCode() {
-        return Objects.hash(src, dst);
+        return Objects.hash(src.toString() + dst.toString());
     }
 }

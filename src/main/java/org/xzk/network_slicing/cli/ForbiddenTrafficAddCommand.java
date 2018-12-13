@@ -5,10 +5,14 @@ import org.apache.karaf.shell.commands.Command;
 import org.onlab.packet.IpAddress;
 import org.onosproject.cli.AbstractShellCommand;
 import org.onosproject.incubator.net.virtual.NetworkId;
+import org.onosproject.net.DeviceId;
+import org.onosproject.net.flow.FlowRuleService;
 import org.xzk.network_slicing.NetworkSlicing;
 import org.xzk.network_slicing.models.FlowPair;
+import org.xzk.network_slicing.models.FlowRuleInformation;
 
 import java.util.LinkedList;
+import java.util.List;
 
 @Command(scope = "onos", name = "ns-add-forbidden-Traffic",
         description = "Adds a forbidden flow to be blocked")
@@ -29,6 +33,8 @@ public class ForbiddenTrafficAddCommand extends AbstractShellCommand {
     @Override
     protected void execute() {
 
+        FlowRuleService flowRuleService = getService(FlowRuleService.class);
+
         NetworkId netId = NetworkId.networkId(networkId);
         IpAddress host1 = IpAddress.valueOf(host1Ip);
         IpAddress host2 = IpAddress.valueOf(host2Ip);
@@ -45,8 +51,30 @@ public class ForbiddenTrafficAddCommand extends AbstractShellCommand {
         print("Forbidden traffic entry added successfully!");
 
         try {
+            List<FlowRuleInformation> flowRules1 = NetworkSlicing.flowRuleStorage.getFlowRules(netId, flowPair1);
+            for (FlowRuleInformation f : flowRules1) {
+                flowRuleService.removeFlowRules(f.getFlowRule());
+
+                DeviceId currentDeviceId = f.getFlowRuleDeviceId();
+                // Return MPLS label if any
+                if (f.getMplsLabel() != null) {
+                    NetworkSlicing.mplsLabelPool.get(currentDeviceId).returnLabel(f.getMplsLabel().toInt());
+                }
+            }
+
+            List<FlowRuleInformation> flowRules2 = NetworkSlicing.flowRuleStorage.getFlowRules(netId, flowPair2);
+            for (FlowRuleInformation f : flowRules2) {
+                flowRuleService.removeFlowRules(f.getFlowRule());
+
+                DeviceId currentDeviceId = f.getFlowRuleDeviceId();
+                // Return MPLS label if any
+                if (f.getMplsLabel() != null) {
+                    NetworkSlicing.mplsLabelPool.get(currentDeviceId).returnLabel(f.getMplsLabel().toInt());
+                }
+            }
             NetworkSlicing.flowRuleStorage.deleteFlowRules(netId, flowPair1);
             NetworkSlicing.flowRuleStorage.deleteFlowRules(netId, flowPair2);
+            print("Flows invalidated!");
         } catch (NullPointerException e) {
             // Do nothing
         }
