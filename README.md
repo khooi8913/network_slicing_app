@@ -45,13 +45,12 @@ Ping between hosts within a tenant's virtual network. Have fun!
 ## Citation
 If you find this work useful to your research, please cite:
 ```
-@article{article,
-author = {Khooi, Xin Zhe and Risdianto, Aris and Chong, Chun Yong and Ling, Teck Chaw},
-year = {2018},
-month = {08},
-pages = {8-13},
-title = {Multi-tenant Network Slicing Technique over OpenFlow-based MPLS Networks},
-volume = {46}
+@article{khooi46multi,
+  title={Multi-tenant Network Slicing Technique over OpenFlow-based MPLS Networks},
+  author={Khooi, Xin Zhe and Chong, Chun Yong and Risdianto, Aris Cahyadi and Ling, Teck Chaw},
+  journal={Proceedings of the Asia-Pacific Advanced Network},
+  volume={46},
+  pages={8--13}
 }
 ```
 
